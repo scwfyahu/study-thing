@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, exams, pipeline, quizzes, reviewers, srs
+from . import db, exams, pipeline, quizzes, reviewers, srs, syllabus
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -74,12 +74,28 @@ def create_notebook(body: dict):
     if not name:
         raise HTTPException(422, "name is required")
     topics = (body.get("topics") or "").strip() or None
+    syllabus = (body.get("syllabus") or "").strip() or None
     with db.get_conn() as conn:
         try:
-            cur = conn.execute("INSERT INTO notebooks(name, topics) VALUES (?,?)", (name, topics))
+            cur = conn.execute(
+                "INSERT INTO notebooks(name, topics, syllabus) VALUES (?,?,?)", (name, topics, syllabus)
+            )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "a notebook with that name already exists")
         return {"id": cur.lastrowid, "name": name, "topics": topics}
+
+
+@app.post("/api/notebooks/parse-syllabus")
+def parse_syllabus(file: UploadFile = File(...)):
+    data = file.file.read()
+    text = syllabus.extract_text(file.filename or "syllabus.txt", data)
+    if len(text.strip()) < 20:
+        raise HTTPException(422, "could not read text from this file — PDF/DOCX/TXT/MD only")
+    topics = syllabus.extract_topics(text)
+    return {"topics": topics, "text": text[:200_000]}
+
+
+@app.get("/api/notebooks/{nb_id}")
 
 
 @app.patch("/api/notebooks/{nb_id}")

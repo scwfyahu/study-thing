@@ -34,8 +34,8 @@ export default function App() {
     setCurrentId(nb.id);
   };
 
-  const saveNotebook = async (name, topics) => {
-    if (modal?.mode === "create") return createNotebook(name, topics);
+  const saveNotebook = async (name, topics, syllabus) => {
+    if (modal?.mode === "create") return createNotebook(name, topics, syllabus);
     const nb = modal.nb;
     if (name !== nb.name) await api.renameNotebook(nb.id, name);
     if (topics !== (nb.topics || "")) await api.setTopics(nb.id, topics);

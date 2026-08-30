@@ -5,4 +5,4 @@ genanki>=0.13
 requests>=2.31
 # ASR: MLX on Apple Silicon, faster-whisper everywhere else
 mlx-whisper>=0.4 ; sys_platform == "darwin" and platform_machine == "arm64"
-faster-whisper>=1.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+faster-whisper>=1.0 ; sys_platform != "darwin" or platform_machine != "arm64"python-docx>=1.1

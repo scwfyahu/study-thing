@@ -175,6 +175,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
 }
 .dropzone:hover, .dropzone.over { border-color: var(--accent); color: var(--text); background: rgba(108,158,248,.05); }
 .dropzone.busy { pointer-events: none; opacity: .6; }
+.syl-zone { padding: 18px; margin-bottom: 2px; font-size: 13px; }
 
 /* ---------- recordings ---------- */
 .rec-row { border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; margin-bottom: 12px; background: var(--bg2); }

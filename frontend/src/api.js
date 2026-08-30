@@ -9,12 +9,17 @@ async function j(res) {
 export const api = {
   health: () => fetch("/api/health").then(j),
   notebooks: () => fetch("/api/notebooks").then(j),
-  createNotebook: (name, topics) =>
+  createNotebook: (name, topics, syllabus) =>
     fetch("/api/notebooks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, topics: topics || "" }),
+      body: JSON.stringify({ name, topics: topics || "", syllabus: syllabus || "" }),
     }).then(j),
+  parseSyllabus: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch("/api/notebooks/parse-syllabus", { method: "POST", body: fd }).then(j);
+  },
   deleteNotebook: (id) => fetch(`/api/notebooks/${id}`, { method: "DELETE" }).then(j),
   renameNotebook: (id, name) =>
     fetch(`/api/notebooks/${id}`, {

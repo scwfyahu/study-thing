@@ -89,6 +89,9 @@ def _migrate(conn) -> None:
     if "due_date" not in cols:
         conn.execute("ALTER TABLE cards ADD COLUMN due_date TEXT")
         conn.execute("UPDATE cards SET due_date = date('now') WHERE due_date IS NULL")
+    ncols = {r[1] for r in conn.execute("PRAGMA table_info(notebooks)")}
+    if "syllabus" not in ncols:
+        conn.execute("ALTER TABLE notebooks ADD COLUMN syllabus TEXT")
     cols = {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
 
 
