@@ -112,7 +112,7 @@ h4 { font-size: 15px; }
 .sidebar-foot { margin-top: 10px; font-size: 11px; color: var(--sand-dim); text-align: center; }
 
 /* ============================ main ============================ */
-.main { flex: 1; padding: 18px 22px; max-width: 1000px; }
+.main { flex: 1; padding: 18px 22px; }
 .banner.error {
   background: rgba(184,121,95,.14); border: 1px solid rgba(184,121,95,.4);
   color: #e5b3a2; padding: 9px 13px; border-radius: var(--r-md); margin-bottom: 12px;
