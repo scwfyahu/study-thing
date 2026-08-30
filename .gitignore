@@ -9,3 +9,7 @@ __pycache__/
 # local recordings (never commit audio)
 recordings/*
 !recordings/.gitkeep
+
+# user syllabus files
+syllabus/*
+!syllabus/.gitkeep
