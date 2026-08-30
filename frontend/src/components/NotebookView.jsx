@@ -422,7 +422,7 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
 
   const toggle = async () => {
     if (browse === null) {
-      const c = await api.cards(dk.notebook_id, null, dk.id);
+      const c = await api.cards(notebookId, null, dk.id);
       setBrowse(c.cards);
     } else setBrowse(null);
   };
