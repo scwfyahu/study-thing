@@ -470,12 +470,6 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
 function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
   const active = ACTIVE.has(r.status);
 
-  const studyThis = async () => {
-    const rows = await fetch(`/api/recordings/${r.id}/cards`).then((x) => x.json());
-    if (!rows.length) return alert("No flashcards in this recording yet.");
-    onStudy(r.original_name, r.id, null);
-  };
-
   const del = async () => {
     if (!confirm(`Delete "${r.original_name}" and its flashcards?`)) return;
     await api.deleteRecording(r.id);
@@ -504,7 +498,6 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
         <span className="spacer" />
         {r.status === "done" && (
           <>
-            <button className="btn small" onClick={studyThis}>▶ Study</button>
             <button className="btn small" onClick={reprocess}>↻ Re-process</button>
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=apkg`}>Anki</a>
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=csv`}>CSV</a>
