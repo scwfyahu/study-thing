@@ -89,6 +89,27 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
 .test-scope { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
 .test-scope li { margin: 2px 0; }
 
+/* ---------- quizzes ---------- */
+.quiz-row {
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg2);
+  margin-bottom: 8px; padding: 10px 14px; position: relative;
+}
+.quiz-row .icon-del { position: absolute; right: 10px; top: 9px; }
+.quiz-q { max-width: 760px; margin: 0 auto; }
+.quiz-q .question { font-size: 19px; font-weight: 600; margin-bottom: 18px; }
+.quiz-choices { display: flex; flex-direction: column; gap: 9px; }
+.quiz-choice {
+  background: var(--bg2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 9px; padding: 11px 14px; text-align: left; font: inherit;
+}
+.quiz-choice:hover:not(:disabled) { border-color: var(--accent); }
+.quiz-choice.correct { border-color: var(--good); background: rgba(74,222,128,.1); }
+.quiz-choice.wrong { border-color: var(--bad); background: rgba(248,113,113,.1); }
+.quiz-choice.dim { opacity: .45; }
+.quiz-feedback { margin-top: 16px; padding: 12px 14px; background: var(--bg3); border-radius: 9px; }
+.quiz-feedback .fb.good { color: var(--good); font-weight: 600; }
+.quiz-feedback .fb.bad { color: var(--bad); font-weight: 600; }
+
 /* ---------- outline ---------- */
 .rev-body { margin-top: 10px; padding: 14px; background: var(--bg3); border-radius: 8px; max-height: 62vh; overflow: auto; }
 .outline ul { list-style: none; margin: 0; padding-left: 14px; }

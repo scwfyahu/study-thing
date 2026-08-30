@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, exams, pipeline, reviewers, srs
+from . import db, exams, pipeline, quizzes, reviewers, srs
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -481,6 +481,74 @@ def download_reviewer(rid: int, format: str = "md"):
         media_type="text/markdown" if ext == "md" else "text/plain",
         headers={"Content-Disposition": f'attachment; filename="reviewer-{_slug(row["topic"])}.{ext}"'},
     )
+
+
+# ------------------------------------------------------------------ quizzes
+
+@app.get("/api/notebooks/{nb_id}/quizzes")
+def list_quizzes(nb_id: int):
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        rows = conn.execute(
+            "SELECT id, title, difficulty, created_at FROM quizzes WHERE notebook_id=? ORDER BY id DESC",
+            (nb_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/notebooks/{nb_id}/quizzes", status_code=201)
+def create_quiz(nb_id: int, body: dict):
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+    source = str(body.get("source") or "All cards").strip()
+    scope = [str(s) for s in (body.get("scope") or [])]
+    try:
+        difficulty = int(body.get("difficulty", 5))
+    except (TypeError, ValueError):
+        difficulty = 5
+    difficulty = max(1, min(10, difficulty))
+    try:
+        count = int(body.get("num_questions", 10))
+    except (TypeError, ValueError):
+        count = 10
+    count = max(1, min(25, count))
+    try:
+        questions = quizzes.generate_quiz(nb_id, source, scope, difficulty, count)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not questions:
+        raise HTTPException(400, "could not generate any valid questions — try fewer questions or different scope")
+    title = f"{source} · diff {difficulty}"
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO quizzes(notebook_id, title, difficulty, questions) VALUES (?,?,?,?)",
+            (nb_id, title, difficulty, json.dumps(questions, ensure_ascii=False)),
+        )
+        qid = cur.lastrowid
+    return {"id": qid, "title": title, "difficulty": difficulty, "questions": questions}
+
+
+@app.get("/api/quizzes/{qid}")
+def get_quiz(qid: int):
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, notebook_id, title, difficulty, questions, created_at FROM quizzes WHERE id=?",
+            (qid,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "quiz not found")
+    d = dict(row)
+    d["questions"] = json.loads(d["questions"])
+    return d
+
+
+@app.delete("/api/quizzes/{qid}")
+def delete_quiz(qid: int):
+    with db.get_conn() as conn:
+        cur = conn.execute("DELETE FROM quizzes WHERE id=?", (qid,))
+    if cur.rowcount == 0:
+        raise HTTPException(404, "quiz not found")
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------- health

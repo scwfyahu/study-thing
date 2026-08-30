@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import Outline from "./Outline.jsx";
+import QuizModal from "./QuizModal.jsx";
+import QuizView from "./QuizView.jsx";
 
 const STATUS_LABEL = {
   queued: "Queued",
@@ -30,14 +32,20 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [revContent, setRevContent] = useState(null);
   const [tests, setTests] = useState([]);
   const [scanning, setScanning] = useState(false);
+  const [quizzes, setQuizzes] = useState([]);
+  const [quizModal, setQuizModal] = useState(false);
+  const [activeQuiz, setActiveQuiz] = useState(null); // {id, title}
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      const [n, rvs, ts] = await Promise.all([api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId)]);
+      const [n, rvs, ts, qzs] = await Promise.all([
+        api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId), api.quizzes(notebookId),
+      ]);
       setNb(n);
       setReviewers(rvs);
       setTests(ts);
+      setQuizzes(qzs);
     } catch {
       /* transient */
     }
@@ -128,6 +136,29 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
   const deleteTest = async (id) => {
     await api.deleteTest(id);
+    load();
+  };
+
+  const makeQuiz = async (source, difficulty, num) => {
+    const q = await api.createQuiz(notebookId, { source: label(source), scope: scopeList(source), difficulty, num_questions: num });
+    await load();
+    setActiveQuiz({ id: q.id, title: q.title });
+  };
+
+  const label = (src) => {
+    if (src === "__all__") return "All cards";
+    if (src.startsWith("topic:")) return src.slice(6);
+    return tests.find((x) => `test:${x.id}` === src)?.title || src;
+  };
+  const scopeList = (src) => {
+    if (src === "__all__") return [];
+    if (src.startsWith("topic:")) return [src.slice(6)];
+    return tests.find((x) => `test:${x.id}` === src)?.scope || [];
+  };
+
+  const delQuiz = async (id) => {
+    if (!confirm("Delete this quiz?")) return;
+    await api.deleteQuiz(id);
     load();
   };
 
@@ -233,6 +264,35 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           </div>
         ))}
       </section>
+
+      <section className="rev-section quizzes-section">
+        <div className="rev-bar">
+          <h4>Quizzes</h4>
+          <button className="btn primary" onClick={() => setQuizModal(true)}>＋ New quiz</button>
+        </div>
+        {quizzes.length === 0 && <p className="muted small-note">Practice tests built from your flashcards — scope them to a test from the schedule, difficulty 1-10.</p>}
+        {quizzes.map((qz) => (
+          <div key={qz.id} className="quiz-row">
+            <button className="rev-main" onClick={() => setActiveQuiz({ id: qz.id, title: qz.title })}>
+              <span className="rev-topic">📝 {qz.title}</span>
+              <span className="muted">{qz.created_at.slice(0, 16).replace("T", " ")}</span>
+            </button>
+            <button className="icon-del" onClick={() => delQuiz(qz.id)} title="Delete quiz">✕</button>
+          </div>
+        ))}
+      </section>
+
+      {quizModal && (
+        <QuizModal
+          tests={tests}
+          topicOptions={topicOptions}
+          onSave={makeQuiz}
+          onClose={() => setQuizModal(false)}
+        />
+      )}
+      {activeQuiz && (
+        <QuizView quizId={activeQuiz.id} title={activeQuiz.title} onClose={() => setActiveQuiz(null)} />
+      )}
     </div>
   );
 }

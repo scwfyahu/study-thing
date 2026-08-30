@@ -66,4 +66,13 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ card_id: cardId, rating }),
     }).then(j),
+  quizzes: (nbId) => fetch(`/api/notebooks/${nbId}/quizzes`).then(j),
+  createQuiz: (nbId, body) =>
+    fetch(`/api/notebooks/${nbId}/quizzes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(j),
+  quiz: (qid) => fetch(`/api/quizzes/${qid}`).then(j),
+  deleteQuiz: (qid) => fetch(`/api/quizzes/${qid}`, { method: "DELETE" }).then(j),
 };

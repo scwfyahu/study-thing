@@ -59,10 +59,19 @@ CREATE TABLE IF NOT EXISTS tests(
   scope TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS quizzes(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  notebook_id INTEGER NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  difficulty INTEGER NOT NULL DEFAULT 5,
+  questions TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE INDEX IF NOT EXISTS idx_recordings_notebook ON recordings(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_cards_recording ON cards(recording_id);
 CREATE INDEX IF NOT EXISTS idx_reviewers_notebook ON reviewers(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_tests_notebook ON tests(notebook_id);
+CREATE INDEX IF NOT EXISTS idx_quizzes_notebook ON quizzes(notebook_id);
 """
 
 def _migrate(conn) -> None:
