@@ -15,22 +15,27 @@ recording → ffmpeg (denoise + loudnorm, 16 kHz mono)
 
 ## Requirements
 
-- macOS with Apple Silicon (M1+), 16 GB RAM is enough (pipeline is sequential)
-- [Homebrew](https://brew.sh)
+- **macOS** (Apple Silicon M1+): MLX Whisper GPU transcription (~15x realtime), 16 GB RAM is enough
+- **Windows 10/11**: faster-whisper (CPU int8, NVIDIA CUDA used automatically if present) — slower than Mac, same features
+- macOS: [Homebrew](https://brew.sh) · Windows: [winget](https://learn.microsoft.com/windows/package-manager/) + Python 3.11+
 
 ## Setup
+
+**macOS:**
 
 ```bash
 ./setup.sh     # venv (python3.11) + brew deps + ollama model (~5 GB) + npm install
 ./run-dev.sh   # open http://localhost:5173
 ```
 
-Production mode (single server, no Vite):
+**Windows (PowerShell):**
 
-```bash
-(cd frontend && npm run build)
-./.venv/bin/uvicorn backend.main:app --port 8765   # open http://localhost:8765
+```powershell
+.\setup.ps1    # venv + winget deps + ollama model + npm install
+.\run-dev.ps1  # open http://localhost:5173
 ```
+
+If winget-installed tools aren't found, open a NEW terminal and re-run. Windows uses CPU int8 by default; an NVIDIA GPU (CUDA) is picked up automatically.
 
 ## Usage
 
@@ -46,7 +51,8 @@ Production mode (single server, no Vite):
 
 | Variable | Default | Notes |
 |---|---|---|
-| `STUDY_WHISPER_MODEL` | `mlx-community/whisper-large-v3-turbo` | Any MLX Whisper repo. `…-4bit` is faster/less accurate. First run downloads the model. |
+| `STUDY_ASR_BACKEND` | `mlx` on Apple Silicon, `faster-whisper` elsewhere | Force the other with `mlx` / `faster-whisper`. |
+| `STUDY_WHISPER_MODEL` | `large-v3-turbo` (per backend) | MLX: any `mlx-community/*` repo. faster-whisper: `large-v3-turbo`, `small`, `medium`… First run downloads the model. |
 | `STUDY_WHISPER_LANGUAGE` | `en` | Set `auto` for auto-detect. |
 | `STUDY_OLLAMA_MODEL` | `qwen3:8b` | Any Ollama model. Smaller: `qwen3:4b`, `llama3.1:8b`. |
 | `STUDY_CHUNK_SECONDS` | `600` | Transcription/extraction chunk length. |

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import db, pipeline
-from .config import AUDIO_DIR, OLLAMA_MODEL, OLLAMA_URL, ROOT, WHISPER_MODEL
+from .config import ASR_BACKEND, AUDIO_DIR, OLLAMA_MODEL, OLLAMA_URL, ROOT, WHISPER_MODEL
 from .exporters import cards_to_apkg, cards_to_csv
 
 ALLOWED_EXT = {
@@ -296,10 +296,12 @@ def health():
         ollama_up = requests.get(f"{OLLAMA_URL}/api/tags", timeout=2).ok
     except Exception:
         pass
+    asr_mod = "mlx_whisper" if ASR_BACKEND == "mlx" else "faster_whisper"
     return {
         "ok": True,
+        "asr_backend": ASR_BACKEND,
         "whisper_model": WHISPER_MODEL,
-        "whisper_installed": importlib.util.find_spec("mlx_whisper") is not None,
+        "whisper_installed": importlib.util.find_spec(asr_mod) is not None,
         "ollama_model": OLLAMA_MODEL,
         "ollama_running": ollama_up,
     }
