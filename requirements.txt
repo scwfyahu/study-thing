@@ -6,3 +6,8 @@ requests>=2.31
 # ASR: MLX on Apple Silicon, faster-whisper everywhere else
 mlx-whisper>=0.4 ; sys_platform == "darwin" and platform_machine == "arm64"
 faster-whisper>=1.0 ; sys_platform != "darwin" or platform_machine != "arm64"python-docx>=1.1
+
+# macOS Vision OCR for handwritten notes
+pyobjc-framework-Vision>=10 ; sys_platform == "darwin"
+pyobjc-framework-Quartz>=10 ; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10 ; sys_platform == "darwin"

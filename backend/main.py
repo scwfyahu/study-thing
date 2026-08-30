@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, exams, pipeline, quizzes, reviewers, srs, syllabus
+from . import db, exams, notes, pipeline, quizzes, reviewers, srs, syllabus
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -28,6 +28,7 @@ from .exporters import cards_to_apkg, cards_to_csv
 ALLOWED_EXT = {
     ".m4a", ".mp3", ".wav", ".webm", ".mp4", ".aac", ".ogg", ".oga",
     ".flac", ".opus", ".mov", ".m4b", ".wma", ".aif", ".aiff",
+    ".png", ".jpg", ".jpeg", ".webp", ".heic", ".pdf",
 }
 
 
@@ -140,7 +141,7 @@ def get_notebook(nb_id: int):
             raise HTTPException(404, "notebook not found")
         has_syllabus = bool((nb["syllabus"] or "").strip())
         recs = conn.execute(
-            """SELECT id, original_name, status, progress, error, note, duration_sec, created_at
+            """SELECT id, original_name, kind, status, progress, error, note, duration_sec, created_at
                FROM recordings WHERE notebook_id=? ORDER BY id DESC""",
             (nb_id,),
         ).fetchall()
@@ -242,12 +243,13 @@ async def upload_recording(nb_id: int, background_tasks: BackgroundTasks, file: 
     ext = Path(file.filename or "").suffix.lower()
     if ext and ext not in ALLOWED_EXT:
         raise HTTPException(415, f"unsupported file type {ext}")
+    kind = "notes" if ext in notes.NOTES_EXT else "recording"
     safe_base = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename or "recording").stem)[:80] or "recording"
 
     with db.get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO recordings(notebook_id, original_name, stored_path, status) VALUES (?,?,?,'queued')",
-            (nb_id, file.filename or "recording", ""),
+            "INSERT INTO recordings(notebook_id, original_name, stored_path, kind, status) VALUES (?,?,?,?,'queued')",
+            (nb_id, file.filename or "recording", "", kind),
         )
         rec_id = cur.lastrowid
 
@@ -260,7 +262,7 @@ async def upload_recording(nb_id: int, background_tasks: BackgroundTasks, file: 
         conn.execute("UPDATE recordings SET stored_path=? WHERE id=?", (str(dest), rec_id))
 
     background_tasks.add_task(pipeline.process_recording, rec_id)
-    return {"id": rec_id, "status": "queued"}
+    return {"id": rec_id, "status": "queued", "kind": kind}
 
 
 @app.get("/api/recordings/{rec_id}")

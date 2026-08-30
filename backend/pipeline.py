@@ -201,8 +201,50 @@ def _unload_ollama() -> None:
         pass
 
 
-def _meaningful(text: str) -> bool:
-    return sum(1 for w in text.split() if len(w) >= 3) >= 20
+def _meaningful(text: str, min_words: int = 20) -> bool:
+    return sum(1 for w in text.split() if len(w) >= 3) >= min_words
+
+
+def _extract_cards_from_texts(recording_id: int, rec, texts: list[tuple[int, str]]) -> None:
+    """Shared card-extraction stage: chunk texts -> LLM cards -> dedupe/store."""
+    seen: set = set()
+    total_cards = 0
+    n = len(texts)
+    for k, (i, text) in enumerate(texts):
+        _set(recording_id, status="extracting", progress=0.60 + 0.38 * (k / max(n, 1)))
+        raw = extract_cards(text, rec["notebook_name"], i, n, rec["topics"])
+        for q, a, topic in clean_cards(raw, seen):
+            with db.get_conn() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO cards(recording_id, question, answer, topic, position) VALUES (?,?,?,?,?)",
+                    (recording_id, q, a, topic, total_cards),
+                )
+            total_cards += 1
+
+    if total_cards == 0 and rec["topics"] and (rec["topics"] or "").strip():
+        _set(recording_id, status="done", progress=1.0,
+             note=("0 flashcards — the content didn't match this notebook's Focus "
+                   "topics. Move to the right class (dropdown) or edit Focus, then Re-process."))
+    else:
+        _set(recording_id, status="done", progress=1.0, note=f"{total_cards} flashcards")
+
+
+def _process_notes(recording_id: int, rec) -> None:
+    """OCR handwritten-note images/PDFs, then extract cards from the text."""
+    from .notes import ocr_file
+
+    _set(recording_id, status="reading", progress=0.05, error=None)
+    text = ocr_file(rec["stored_path"])
+    with db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
+            (recording_id, 0, 0, text),
+        )
+    if not _meaningful(text, min_words=10):
+        _set(recording_id, status="done", progress=1.0,
+             note="No readable text found in the notes — blurry or not handwriting?")
+        return
+    _extract_cards_from_texts(recording_id, rec, [(0, text)])
 
 
 def process_recording(recording_id: int) -> None:
@@ -218,6 +260,9 @@ def process_recording(recording_id: int) -> None:
             return
         work_dir = AUDIO_DIR / f"work_{recording_id}"
         try:
+            if rec["kind"] == "notes":
+                _process_notes(recording_id, rec)
+                return
             work_dir.mkdir(parents=True, exist_ok=True)
             _set(recording_id, status="denoising", progress=0.02, error=None)
             wav, duration = prepare_audio(rec["stored_path"], work_dir)

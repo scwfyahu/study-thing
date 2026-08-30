@@ -9,6 +9,7 @@ const STATUS_LABEL = {
   denoising: "Cleaning audio",
   splitting: "Splitting",
   transcribing: "Transcribing",
+  reading: "Reading notes",
   extracting: "Making flashcards",
   done: "Done",
   error: "Failed",
@@ -240,7 +241,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           hidden
           onChange={(e) => { uploadFiles([...e.target.files]); e.target.value = ""; }}
         />
-        {busy ? "Uploading…" : "Drop lecture recordings here, or click to browse"}
+        {busy ? "Uploading…" : "Drop lecture recordings or handwritten note photos/PDFs here"}
       </div>
 
       <section className="rec-list">
@@ -357,6 +358,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
       <div className="rec-top">
         <button className="rec-toggle" onClick={toggle}>{open ? "▾" : "▸"}</button>
         <span className="rec-name">{r.original_name}</span>
+        {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className={`badge s-${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
         {r.duration_sec ? <span className="muted">{fmtDur(r.duration_sec)}</span> : null}
         <span className="spacer" />

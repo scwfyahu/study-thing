@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS recordings(
   notebook_id INTEGER NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
   original_name TEXT NOT NULL,
   stored_path TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'recording',
   status TEXT NOT NULL DEFAULT 'queued',
   progress REAL NOT NULL DEFAULT 0,
   note TEXT,
@@ -89,6 +90,9 @@ def _migrate(conn) -> None:
     if "due_date" not in cols:
         conn.execute("ALTER TABLE cards ADD COLUMN due_date TEXT")
         conn.execute("UPDATE cards SET due_date = date('now') WHERE due_date IS NULL")
+    rcols = {r[1] for r in conn.execute("PRAGMA table_info(recordings)")}
+    if "kind" not in rcols:
+        conn.execute("ALTER TABLE recordings ADD COLUMN kind TEXT NOT NULL DEFAULT 'recording'")
     ncols = {r[1] for r in conn.execute("PRAGMA table_info(notebooks)")}
     if "syllabus" not in ncols:
         conn.execute("ALTER TABLE notebooks ADD COLUMN syllabus TEXT")
