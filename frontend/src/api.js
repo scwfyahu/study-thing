@@ -68,6 +68,9 @@ export const api = {
   scanTests: (nbId) =>
     fetch(`/api/notebooks/${nbId}/tests/scan`, { method: "POST" }).then(j),
   deleteTest: (id) => fetch(`/api/tests/${id}`, { method: "DELETE" }).then(j),
+  schedule: () => fetch("/api/schedule").then(j),
+  scanSchedule: () =>
+    fetch("/api/schedule/scan", { method: "POST" }).then(j),
   study: (nbId, recordingId) => {
     const q = recordingId ? `?recording_id=${recordingId}` : "";
     return fetch(`/api/notebooks/${nbId}/study${q}`).then(j);

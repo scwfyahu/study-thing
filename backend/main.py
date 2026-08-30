@@ -241,7 +241,47 @@ def notebook_cards(nb_id: int):
     return [dict(r) for r in rows]
 
 
-# --------------------------------------------------------------- recordings
+@app.get("/api/schedule")
+def schedule_all():
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.created_at,
+                      n.name AS notebook_name, n.id AS notebook_id
+               FROM tests t JOIN notebooks n ON n.id = t.notebook_id
+               ORDER BY
+                 CASE WHEN t.date_iso IS NULL THEN 1 ELSE 0 END, t.date_iso ASC, t.created_at DESC""",
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["scope"] = json.loads(d["scope"] or "[]")
+        except Exception:
+            d["scope"] = []
+        out.append(d)
+    return out
+
+
+@app.post("/api/schedule/scan")
+def schedule_rescan_all():
+    import datetime as _dt
+
+    today = _dt.date.today().isoformat()
+    with db.get_conn() as conn:
+        nbs = conn.execute("SELECT id FROM notebooks").fetchall()
+    n = 0
+    for nb in nbs:
+        with db.get_conn() as conn:
+            recs = conn.execute(
+                "SELECT id FROM recordings WHERE notebook_id=? AND status='done'", (nb["id"],)
+            ).fetchall()
+            conn.execute("DELETE FROM tests WHERE notebook_id=?", (nb["id"],))
+        for r in recs:
+            n += exams.scan_recording(r["id"], nb["id"], today)
+    return {"ok": True, "scanned": n}
+
+
+# ---------------------------------------------------------------- recordings
 
 @app.post("/api/notebooks/{nb_id}/recordings", status_code=201)
 async def upload_recording(nb_id: int, background_tasks: BackgroundTasks, file: UploadFile = File(...)):

@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import NotebookModal from "./components/NotebookModal.jsx";
 import NotebookView from "./components/NotebookView.jsx";
+import ScheduleView from "./components/ScheduleView.jsx";
 import StudyView from "./components/StudyView.jsx";
 
 export default function App() {
   const [notebooks, setNotebooks] = useState([]);
   const [currentId, setCurrentId] = useState(null);
+  const [viewSchedule, setViewSchedule] = useState(false);
   const [modal, setModal] = useState(null); // {mode:'create'} | {mode:'edit', nb}
   const [study, setStudy] = useState(null); // {title, notebookId}
   const [error, setError] = useState("");
@@ -63,11 +65,18 @@ export default function App() {
       <aside className="sidebar">
         <h1 className="brand">Study<span>Thing</span></h1>
         <nav className="nb-list">
+          <div
+            className={"nb-item" + (viewSchedule ? " active" : "")}
+            onClick={() => { setViewSchedule(true); setStudy(null); }}
+          >
+            <div className="nb-name">📅 Quiz schedule</div>
+            <div className="nb-meta">all subjects</div>
+          </div>
           {notebooks.map((nb) => (
             <div
               key={nb.id}
-              className={"nb-item" + (nb.id === currentId ? " active" : "")}
-              onClick={() => { setCurrentId(nb.id); setStudy(null); }}
+              className={"nb-item" + (nb.id === currentId && !viewSchedule ? " active" : "")}
+              onClick={() => { setCurrentId(nb.id); setViewSchedule(false); setStudy(null); }}
             >
               <div className="nb-name">{nb.name}</div>
               <div className="nb-meta">{nb.recording_count} rec · {nb.card_count} cards</div>
@@ -97,6 +106,8 @@ export default function App() {
             title={study.title}
             onClose={() => setStudy(null)}
           />
+        ) : viewSchedule ? (
+          <ScheduleView onOpenNotebook={(id) => { setCurrentId(id); setViewSchedule(false); }} />
         ) : currentId ? (
           <NotebookView
             key={currentId}
