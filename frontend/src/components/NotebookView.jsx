@@ -38,6 +38,8 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [activeQuiz, setActiveQuiz] = useState(null); // {id, title}
   const [autoFocusing, setAutoFocusing] = useState(false);
   const [srcTab, setSrcTab] = useState("recordings");
+  const [selTopic, setSelTopic] = useState(null);
+  const [cards, setCards] = useState(null); // {topics, cards}
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
