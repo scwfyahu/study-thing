@@ -37,6 +37,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [quizModal, setQuizModal] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState(null); // {id, title}
   const [autoFocusing, setAutoFocusing] = useState(false);
+  const [srcTab, setSrcTab] = useState("recordings");
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
