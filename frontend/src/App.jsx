@@ -37,8 +37,11 @@ export default function App() {
   const saveNotebook = async (name, topics, syllabus) => {
     if (modal?.mode === "create") return createNotebook(name, topics, syllabus);
     const nb = modal.nb;
-    if (name !== nb.name) await api.renameNotebook(nb.id, name);
-    if (topics !== (nb.topics || "")) await api.setTopics(nb.id, topics);
+    const body = {};
+    if (name !== nb.name) body.name = name;
+    if (topics !== (nb.topics || "")) body.topics = topics;
+    if (syllabus) body.syllabus = syllabus;
+    if (Object.keys(body).length) await api.updateNotebook(nb.id, body);
     await refresh();
   };
 

@@ -4,7 +4,7 @@ import { api } from "../api.js";
 export default function NotebookModal({ initial, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || "");
   const [topics, setTopics] = useState(initial?.topics || "");
-  const [syllabusText, setSyllabusText] = useState("");
+  const [syllabusText, setSyllabusText] = useState(initial ? "_keep" : "");
   const [parsing, setParsing] = useState(false);
   const [parsedName, setParsedName] = useState("");
   const [err, setErr] = useState("");
@@ -14,7 +14,8 @@ export default function NotebookModal({ initial, onSave, onClose }) {
     e.preventDefault();
     if (!name.trim()) return;
     try {
-      await onSave(name.trim(), topics.trim(), syllabusText);
+      const syl = syllabusText === "_keep" ? "" : syllabusText;
+      await onSave(name.trim(), topics.trim(), syl);
       onClose();
     } catch (ex) {
       setErr(ex.message);
@@ -58,6 +59,21 @@ export default function NotebookModal({ initial, onSave, onClose }) {
               <input ref={fileInput} type="file" accept=".pdf,.docx,.txt,.md" hidden
                      onChange={(e) => { parseFile(e.target.files[0]); e.target.value = ""; }} />
               {parsing ? "Reading syllabus…" : parsedName ? `✓ ${parsedName} parsed — topics extracted below` : "Drop the syllabus here or click to browse"}
+            </div>
+          </>
+        )}
+        {initial && (
+          <>
+            <label>Update syllabus <span className="muted">(optional — re-extracts Focus topics)</span></label>
+            <div
+              className={"dropzone syl-zone" + (parsing ? " busy" : "")}
+              onClick={() => fileInput.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); parseFile(e.dataTransfer.files[0]); }}
+            >
+              <input ref={fileInput} type="file" accept=".pdf,.docx,.txt,.md" hidden
+                     onChange={(e) => { parseFile(e.target.files[0]); e.target.value = ""; }} />
+              {parsing ? "Reading syllabus…" : parsedName ? `✓ ${parsedName} parsed — topics updated below` : "Drop a new syllabus to re-extract topics"}
             </div>
           </>
         )}

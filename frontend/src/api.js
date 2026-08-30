@@ -33,6 +33,13 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topics }),
     }).then(j),
+  updateNotebook: (id, body) =>
+    fetch(`/api/notebooks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(j),
+  autoFocus: (id) => fetch(`/api/notebooks/${id}/auto-focus`, { method: "POST" }).then(j),
   moveRecording: (id, notebookId) =>
     fetch(`/api/recordings/${id}`, {
       method: "PATCH",

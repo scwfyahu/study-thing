@@ -35,6 +35,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [quizzes, setQuizzes] = useState([]);
   const [quizModal, setQuizModal] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState(null); // {id, title}
+  const [autoFocusing, setAutoFocusing] = useState(false);
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
@@ -82,6 +83,17 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
   const editTopics = () => {
     onEditFocus(nb);
+  };
+
+  const autoFocus = async () => {
+    setAutoFocusing(true);
+    try {
+      await api.autoFocus(notebookId);
+      await load();
+    } catch (ex) {
+      alert(ex.message);
+    }
+    setAutoFocusing(false);
   };
 
   const topicOptions = (nb?.topics || "")
@@ -172,6 +184,11 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           {nb.topics && <div className="topics-line">Focus: {nb.topics}</div>}
         </div>
         <div className="nb-actions">
+          {nb.has_syllabus && (
+            <button className="btn" onClick={autoFocus} disabled={autoFocusing}>
+              {autoFocusing ? "Extracting…" : "⟳ Auto-focus"}
+            </button>
+          )}
           <button className="btn" onClick={() => editTopics()}>Focus</button>
           <button className="primary" onClick={startStudy}>
             ▶ Study{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}

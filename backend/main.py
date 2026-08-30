@@ -105,6 +105,8 @@ def rename_notebook(nb_id: int, body: dict):
         fields["name"] = name
     if "topics" in body:
         fields["topics"] = (body.get("topics") or "").strip() or None
+    if "syllabus" in body:
+        fields["syllabus"] = (body.get("syllabus") or "").strip() or None
     if not fields:
         raise HTTPException(422, "nothing to update")
     with db.get_conn() as conn:
@@ -133,9 +135,10 @@ def update_recording(rec_id: int, body: dict):
 @app.get("/api/notebooks/{nb_id}")
 def get_notebook(nb_id: int):
     with db.get_conn() as conn:
-        nb = conn.execute("SELECT id, name, created_at, topics FROM notebooks WHERE id=?", (nb_id,)).fetchone()
+        nb = conn.execute("SELECT id, name, created_at, topics, syllabus FROM notebooks WHERE id=?", (nb_id,)).fetchone()
         if nb is None:
             raise HTTPException(404, "notebook not found")
+        has_syllabus = bool((nb["syllabus"] or "").strip())
         recs = conn.execute(
             """SELECT id, original_name, status, progress, error, note, duration_sec, created_at
                FROM recordings WHERE notebook_id=? ORDER BY id DESC""",
@@ -150,7 +153,8 @@ def get_notebook(nb_id: int):
             (nb_id,),
         ).fetchone()
     return {**dict(nb), "recordings": [dict(r) for r in recs],
-            "new_count": stats["new_count"] or 0, "due_count": stats["due_count"] or 0}
+            "new_count": stats["new_count"] or 0, "due_count": stats["due_count"] or 0,
+            "has_syllabus": has_syllabus}
 
 
 @app.get("/api/notebooks/{nb_id}/study")
@@ -431,6 +435,23 @@ def delete_test(tid: int):
 
 
 # ---------------------------------------------------------------- reviewers
+
+@app.post("/api/notebooks/{nb_id}/auto-focus")
+def auto_focus(nb_id: int):
+    """Regenerate Focus topics from the notebook's stored syllabus."""
+    with db.get_conn() as conn:
+        nb = conn.execute("SELECT id, name, syllabus FROM notebooks WHERE id=?", (nb_id,)).fetchone()
+        if nb is None:
+            raise HTTPException(404, "notebook not found")
+    if not (nb["syllabus"] or "").strip():
+        raise HTTPException(400, "no syllabus stored for this notebook — upload one in Edit")
+    topics = syllabus.extract_topics(nb["syllabus"])
+    if not topics:
+        raise HTTPException(400, "could not extract topics from syllabus")
+    with db.get_conn() as conn:
+        conn.execute("UPDATE notebooks SET topics=? WHERE id=?", ("\n".join(topics), nb_id))
+    return {"topics": topics}
+
 
 @app.get("/api/notebooks/{nb_id}/reviewers")
 def list_reviewers(nb_id: int):
