@@ -175,13 +175,13 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
     load();
   };
 
-  if (!nb) return <div className="loading">Loading…</div>;
-
   const recRows = (nb?.recordings || []).filter((r) => r.kind !== "notes");
   const noteRows = (nb?.recordings || []).filter((r) => r.kind === "notes");
   useEffect(() => {
     if (srcTab === "recordings" && !recRows.length && noteRows.length) setSrcTab("notes");
   }, [nb]);
+
+  if (!nb) return <div className="loading">Loading…</div>;
 
   const srcRows = srcTab === "notes" ? noteRows : recRows;
 
