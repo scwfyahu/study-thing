@@ -281,6 +281,15 @@ def process_recording(recording_id: int) -> None:
                     )
                 texts.append((i, text))
 
+            # tests are extracted right after transcription — don't wait for card generation
+            try:
+                import datetime as _dt
+                from . import exams as _exams
+
+                _exams.scan_recording(recording_id, rec["notebook_id"], _dt.date.today().isoformat())
+            except Exception:
+                pass
+
             meaningful = [(i, t) for i, t in texts if _meaningful(t)]
             if not meaningful:
                 _set(recording_id, status="done", progress=1.0,
@@ -307,15 +316,6 @@ def process_recording(recording_id: int) -> None:
                            "Focus, then Re-process."))
             else:
                 _set(recording_id, status="done", progress=1.0, note=f"{total_cards} flashcards")
-
-            # after success, look for announced tests in this recording
-            try:
-                import datetime as _dt
-                from . import exams as _exams
-
-                _exams.scan_recording(recording_id, rec["notebook_id"], _dt.date.today().isoformat())
-            except Exception:
-                pass
         except Exception as e:  # noqa: BLE001 — surface any failure on the recording row
             _set(recording_id, status="error", error=str(e)[:800])
         finally:

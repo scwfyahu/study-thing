@@ -99,23 +99,36 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
         except Exception:
             continue  # one chunk failing must not kill the scan
 
-    # dedupe by title (case-insensitive), newest chunk wins
+    # dedupe by title (case-insensitive); a concrete date beats a vague one
     seen = {}
     VAGUE = {"test schedule", "exam schedule", "schedule", "test details", "quiz schedule", "the test"}
     for a in found:
         if _norm(a["title"]) in VAGUE:
             continue
         key = a["title"].lower()
-        seen.setdefault(key, a)
+        cur = seen.get(key)
+        if cur is None or (a["date_iso"] and not cur["date_iso"]):
+            seen[key] = a
 
     with db.get_conn() as conn:
         for a in seen.values():
-            dup = conn.execute(
-                "SELECT 1 FROM tests WHERE notebook_id=? AND title=? COLLATE NOCASE",
+            if not a["date_iso"]:
+                # No concrete date -> keep out of the schedule (low confidence).
+                # A later recording with a concrete date will create/upgrade the row.
+                continue
+            row = conn.execute(
+                "SELECT id, date_iso FROM tests WHERE notebook_id=? AND title=? COLLATE NOCASE",
                 (notebook_id, a["title"]),
             ).fetchone()
-            if dup:
-                continue  # daily uploads repeat the same announcements
+            if row:
+                if row["date_iso"] is None:
+                    # upgrade: a recording finally confirmed the date
+                    conn.execute(
+                        "UPDATE tests SET date_text=?, date_iso=?, scope=?, recording_id=? WHERE id=?",
+                        (a["date_text"], a["date_iso"], json.dumps(a["scope"], ensure_ascii=False),
+                         recording_id, row["id"]),
+                    )
+                continue  # already has a concrete date (or was upgraded)
             conn.execute(
                 "INSERT INTO tests(notebook_id, recording_id, title, date_text, date_iso, scope) "
                 "VALUES (?,?,?,?,?,?)",

@@ -248,8 +248,8 @@ def schedule_all():
             """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.created_at,
                       n.name AS notebook_name, n.id AS notebook_id
                FROM tests t JOIN notebooks n ON n.id = t.notebook_id
-               ORDER BY
-                 CASE WHEN t.date_iso IS NULL THEN 1 ELSE 0 END, t.date_iso ASC, t.created_at DESC""",
+               WHERE t.date_iso IS NOT NULL
+               ORDER BY t.date_iso ASC, t.created_at DESC""",
         ).fetchall()
     out = []
     for r in rows:
