@@ -95,9 +95,6 @@ def parse_syllabus(file: UploadFile = File(...)):
     return {"topics": topics, "text": text[:200_000]}
 
 
-@app.get("/api/notebooks/{nb_id}")
-
-
 @app.patch("/api/notebooks/{nb_id}")
 def rename_notebook(nb_id: int, body: dict):
     fields = {}
