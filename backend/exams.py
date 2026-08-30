@@ -26,6 +26,10 @@ DETECT_SCHEMA = {
 }
 
 
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
 def _ollama_json(messages: list[dict]) -> dict:
     import requests
 
@@ -66,10 +70,14 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
                     "You scan a lecture transcript chunk for assessment announcements: "
                     "quizzes, tests, exams, quarter/summative assessments, practicals, "
                     "major project deadlines. Today's date is " + today + ". "
-                    "For each announcement: title (short), date_text (the EXACT phrase as spoken, "
+                    "For each announcement: title (short, SPECIFIC — e.g. 'Quiz Two', 'Quarter Exam', "
+                    "'Unit 3 Test'), date_text (the EXACT phrase as spoken, "
                     "e.g. 'September 9th' / 'next Friday' — never empty if a date is mentioned), "
                     "date_iso (resolve relative dates to YYYY-MM-DD using today's date; null if no date), "
                     "scope (list of topics explicitly announced as covered; empty if not stated). "
+                    "IMPORTANT: do NOT report schedule logistics — coordination talk like 'the schedule "
+                    "will be posted', who announces dates, exam-week planning, or generic mentions of "
+                    "'a test' without a named assessment. Only report concrete named assessments. "
                     "Return the schema exactly."
                 )},
                 {"role": "user", "content": f"Transcript chunk {c['idx']}:\n{c['text'][:6000]}"},
@@ -88,7 +96,10 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
 
     # dedupe by title (case-insensitive), newest chunk wins
     seen = {}
+    VAGUE = {"test schedule", "exam schedule", "schedule", "test details", "quiz schedule", "the test"}
     for a in found:
+        if _norm(a["title"]) in VAGUE:
+            continue
         key = a["title"].lower()
         seen.setdefault(key, a)
 
