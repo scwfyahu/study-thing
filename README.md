@@ -1,6 +1,6 @@
 # StudyThing
 
-A local-only NotebookLM clone that does **one thing**: turn raw class recordings into flashcards.
+A local-only LLM Notebook that does **one thing**: turn raw class recordings into flashcards.
 
 You drop in lecture recordings (noisy classroom audio included). StudyThing cleans the audio,
 transcribes it on Apple Silicon (MLX Whisper), and generates flashcards with a local LLM
