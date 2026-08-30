@@ -6,3 +6,6 @@ models/
 __pycache__/
 *.pyc
 .DS_Store
+# local recordings (never commit audio)
+recordings/*
+!recordings/.gitkeep
