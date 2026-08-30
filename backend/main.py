@@ -166,19 +166,21 @@ def get_notebook(nb_id: int):
 
 
 @app.get("/api/notebooks/{nb_id}/study")
-def study_queue(nb_id: int, recording_id: int | None = None):
+def study_queue(nb_id: int, recording_id: int | None = None, topic: str | None = None):
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
+        where = "r.notebook_id=?"
+        args: list = [nb_id]
         if recording_id:
-            extra = "AND c.recording_id=?"
-            args = (nb_id, recording_id)
-        else:
-            extra = ""
-            args = (nb_id,)
+            where += " AND c.recording_id=?"
+            args.append(recording_id)
+        if topic:
+            where += " AND COALESCE(NULLIF(c.topic, ''), 'Untagged')=?"
+            args.append(topic)
         rows = conn.execute(
             f"""SELECT c.id, c.question, c.answer, c.topic, c.reps, c.interval_days, c.due_date
                FROM cards c JOIN recordings r ON r.id = c.recording_id
-               WHERE r.notebook_id=? AND (c.reps=0 OR c.due_date <= date('now')) {extra}
+               WHERE {where} AND (c.reps=0 OR c.due_date <= date('now'))
                ORDER BY (c.reps=0) DESC, c.due_date, c.id""",
             args,
         ).fetchall()
@@ -229,16 +231,27 @@ def delete_notebook(nb_id: int):
 
 
 @app.get("/api/notebooks/{nb_id}/cards")
-def notebook_cards(nb_id: int):
+def notebook_cards(nb_id: int, topic: str | None = None):
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
-        rows = conn.execute(
-            """SELECT c.id, c.question, c.answer, r.id AS recording_id, r.original_name
+        counts = conn.execute(
+            """SELECT COALESCE(NULLIF(c.topic, ''), 'Untagged') AS t, COUNT(*) AS n
                FROM cards c JOIN recordings r ON r.id = c.recording_id
-               WHERE r.notebook_id=? ORDER BY r.id, c.position""",
+               WHERE r.notebook_id=? GROUP BY t ORDER BY n DESC""",
             (nb_id,),
         ).fetchall()
-    return [dict(r) for r in rows]
+        where = "r.notebook_id=?"
+        args = [nb_id]
+        if topic:
+            where += " AND COALESCE(NULLIF(c.topic, ''), 'Untagged')=?"
+            args.append(topic)
+        rows = conn.execute(
+            f"""SELECT c.id, c.question, c.answer, c.topic, r.id AS recording_id, r.original_name
+               FROM cards c JOIN recordings r ON r.id = c.recording_id
+               WHERE {where} ORDER BY r.id, c.position""",
+            args,
+        ).fetchall()
+    return {"topics": [dict(x) for x in counts], "cards": [dict(x) for x in rows]}
 
 
 @app.get("/api/schedule")

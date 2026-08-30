@@ -54,6 +54,17 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
     }
   }, [notebookId]);
 
+  const loadCards = useCallback(async (topic) => {
+    try {
+      setCards(await api.cards(notebookId, topic));
+    } catch { /* transient */ }
+  }, [notebookId]);
+
+  useEffect(() => {
+    loadCards(selTopic);
+  }, [selTopic, loadCards]);
+
+
   useEffect(() => {
     load();
   }, [load]);
@@ -78,9 +89,9 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   };
 
   const startStudy = async () => {
-    const q = await api.study(notebookId);
+    const q = await api.study(notebookId, null, selTopic);
     if (!q.cards.length) return alert("Nothing due — all cards scheduled. Study again when the queue fills up.");
-    onStudy(nb.name, null, notebookId);
+    onStudy(nb.name, null, selTopic);
   };
 
   const editTopics = () => {
@@ -201,7 +212,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           )}
           <button className="btn" onClick={() => editTopics()}>Focus</button>
           <button className="primary" onClick={startStudy}>
-            ▶ Study{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}
+            ▶ Study{selTopic ? ` (${selTopic.slice(0, 28)}…)` : ""}{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}
           </button>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=apkg`}>Export Anki</a>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=csv`}>Export CSV</a>
@@ -277,6 +288,41 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
       <section className="rev-section">
         <div className="rev-bar">
+          <h4>Flashcards</h4>
+          <div className="topic-chips">
+            <button className={"chip" + (selTopic === null ? " on" : "")} onClick={() => setSelTopic(null)}>
+              All{cards ? ` (${cards.cards.length})` : ""}
+            </button>
+            {(cards?.topics || []).map((t) => (
+              <button
+                key={t.t}
+                className={"chip" + (selTopic === t.t ? " on" : "")}
+                onClick={() => setSelTopic(selTopic === t.t ? null : t.t)}
+              >
+                {t.t.slice(0, 34)}{t.t.length > 34 ? "…" : ""} ({t.n})
+              </button>
+            ))}
+          </div>
+        </div>
+        {!cards && <p className="muted">Loading…</p>}
+        {cards && cards.cards.length === 0 && (
+          <p className="muted small-note">No flashcards{selTopic ? " for this topic" : " yet"} — upload a recording or notes, then wait for extraction.</p>
+        )}
+        {cards && cards.cards.length > 0 && (
+          <div className="cards">
+            {cards.cards.map((c) => (
+              <details key={c.id} className="card">
+                <summary>{c.question}</summary>
+                <p>{c.answer}</p>
+                {c.topic && <div className="muted small-note">📌 {c.topic}</div>}
+              </details>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rev-section">
+        <div className="rev-bar">
           <h4>Reviewers</h4>
           <select value={revTopic} onChange={(e) => setRevTopic(e.target.value)} disabled={revBusy}>
             <option value="__all__">All topics</option>
@@ -340,23 +386,12 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 }
 
 function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
-  const [open, setOpen] = useState(false);
-  const [cards, setCards] = useState(null);
   const active = ACTIVE.has(r.status);
-
-  const toggle = async () => {
-    const next = !open;
-    setOpen(next);
-    if (next && r.status === "done") {
-      const rows = await fetch(`/api/recordings/${r.id}/cards`).then((x) => x.json());
-      setCards(rows);
-    }
-  };
 
   const studyThis = async () => {
     const rows = await fetch(`/api/recordings/${r.id}/cards`).then((x) => x.json());
     if (!rows.length) return alert("No flashcards in this recording yet.");
-    onStudy(r.original_name, r.id);
+    onStudy(r.original_name, r.id, null);
   };
 
   const del = async () => {
@@ -380,7 +415,6 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
   return (
     <div className="rec-row">
       <div className="rec-top">
-        <button className="rec-toggle" onClick={toggle}>{open ? "▾" : "▸"}</button>
         <span className="rec-name">{r.original_name}</span>
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className={`badge s-${r.status}`}>{STATUS_LABEL[r.status] || r.status}{r.queue_pos ? ` (#${r.queue_pos})` : ""}</span>
@@ -411,17 +445,6 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
       )}
       {r.status === "error" && <div className="err-text">{r.error}</div>}
       {r.note && r.status === "done" && <div className="muted small-note">{r.note}</div>}
-      {open && cards !== null && (
-        <div className="cards">
-          {cards.length === 0 && <p className="muted">No cards.</p>}
-          {cards.map((c) => (
-            <details key={c.id} className="card">
-              <summary>{c.question}</summary>
-              <p>{c.answer}</p>
-            </details>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

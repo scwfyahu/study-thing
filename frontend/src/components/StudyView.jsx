@@ -8,7 +8,7 @@ const RATINGS = [
   { key: "easy", label: "Easy", kbd: "4", cls: "good", hint: "too easy — skip ahead" },
 ];
 
-export default function StudyView({ notebookId, recordingId, title, onClose }) {
+export default function StudyView({ notebookId, recordingId, topic, title, onClose }) {
   const [queue, setQueue] = useState(null);
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -17,10 +17,10 @@ export default function StudyView({ notebookId, recordingId, title, onClose }) {
 
   useEffect(() => {
     api
-      .study(notebookId, recordingId)
+      .study(notebookId, recordingId, topic)
       .then((q) => setQueue(q))
       .catch((e) => setErr(e.message));
-  }, [notebookId, recordingId]);
+  }, [notebookId, recordingId, topic]);
 
   const rate = async (rating) => {
     if (!queue) return;
@@ -59,7 +59,7 @@ export default function StudyView({ notebookId, recordingId, title, onClose }) {
         <h2>🎉 Queue done</h2>
         <p className="muted">{doneCount} card{doneCount === 1 ? "" : "s"} reviewed. Review again after the due dates come up — every "Good" stretches the interval.</p>
         <div className="study-controls">
-          <button className="btn" onClick={() => api.study(notebookId, recordingId).then(setQueue)}>Restart (any due)</button>
+          <button className="btn" onClick={() => api.study(notebookId, recordingId, topic).then(setQueue)}>Restart (any due)</button>
           <button className="btn primary" onClick={onClose}>← Back</button>
         </div>
       </div>

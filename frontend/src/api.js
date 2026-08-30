@@ -47,7 +47,10 @@ export const api = {
       body: JSON.stringify({ notebook_id: notebookId }),
     }).then(j),
   notebook: (id) => fetch(`/api/notebooks/${id}`).then(j),
-  cards: (nbId) => fetch(`/api/notebooks/${nbId}/cards`).then(j),
+  cards: (nbId, topic) => {
+    const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
+    return fetch(`/api/notebooks/${nbId}/cards${q}`).then(j);
+  },
   upload: (nbId, file) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -71,8 +74,11 @@ export const api = {
   schedule: () => fetch("/api/schedule").then(j),
   scanSchedule: () =>
     fetch("/api/schedule/scan", { method: "POST" }).then(j),
-  study: (nbId, recordingId) => {
-    const q = recordingId ? `?recording_id=${recordingId}` : "";
+  study: (nbId, recordingId, topic) => {
+    const params = new URLSearchParams();
+    if (recordingId) params.set("recording_id", recordingId);
+    if (topic) params.set("topic", topic);
+    const q = params.toString() ? `?${params}` : "";
     return fetch(`/api/notebooks/${nbId}/study${q}`).then(j);
   },
   rate: (cardId, rating) =>

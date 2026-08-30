@@ -339,6 +339,15 @@ h4 { font-size: 15px; }
 .src-tab:hover { background: rgba(233,228,218,.06); }
 .src-tab.active { background: var(--ink3); color: var(--ochre); border-color: var(--line); }
 
+/* topic chips */
+.topic-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  background: var(--ink3); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 500;
+}
+.chip:hover { border-color: rgba(201,164,94,.4); }
+.chip.on { background: rgba(143,160,127,.2); color: var(--moss); border-color: rgba(143,160,127,.45); }
+
 @media (max-width: 720px) {
   .layout { flex-direction: column; }
   .sidebar { width: 100%; }

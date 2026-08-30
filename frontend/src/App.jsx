@@ -103,6 +103,7 @@ export default function App() {
           <StudyView
             notebookId={study.notebookId}
             recordingId={study.recordingId}
+            topic={study.topic}
             title={study.title}
             onClose={() => setStudy(null)}
           />
@@ -113,7 +114,7 @@ export default function App() {
             key={currentId}
             notebookId={currentId}
             notebooks={notebooks}
-            onStudy={(title, recordingId) => setStudy({ title, notebookId: currentId, recordingId })}
+            onStudy={(title, recordingId, topic) => setStudy({ title, notebookId: currentId, recordingId, topic })}
             onEditFocus={(nb) => setModal({ mode: "edit", nb })}
           />
         ) : (
