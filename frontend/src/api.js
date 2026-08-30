@@ -47,10 +47,25 @@ export const api = {
       body: JSON.stringify({ notebook_id: notebookId }),
     }).then(j),
   notebook: (id) => fetch(`/api/notebooks/${id}`).then(j),
-  cards: (nbId, topic) => {
-    const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
+  cards: (nbId, topic, deckId) => {
+    const params = new URLSearchParams();
+    if (topic) params.set("topic", topic);
+    if (deckId) params.set("deck_id", deckId);
+    const q = params.toString() ? `?${params}` : "";
     return fetch(`/api/notebooks/${nbId}/cards${q}`).then(j);
   },
+  decks: (nbId) => fetch(`/api/notebooks/${nbId}/decks`).then(j),
+  createDeck: (nbId, body) =>
+    fetch(`/api/notebooks/${nbId}/decks`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }).then(j),
+  guessDeckScope: (did) => fetch(`/api/decks/${did}/guess`, { method: "POST" }).then(j),
+  updateDeck: (did, body) =>
+    fetch(`/api/decks/${did}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }).then(j),
+  confirmDeck: (did) => fetch(`/api/decks/${did}/confirm`, { method: "POST" }).then(j),
+  deleteDeck: (did) => fetch(`/api/decks/${did}`, { method: "DELETE" }).then(j),
   upload: (nbId, file) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -74,10 +89,11 @@ export const api = {
   schedule: () => fetch("/api/schedule").then(j),
   scanSchedule: () =>
     fetch("/api/schedule/scan", { method: "POST" }).then(j),
-  study: (nbId, recordingId, topic) => {
+  study: (nbId, recordingId, topic, deckId) => {
     const params = new URLSearchParams();
     if (recordingId) params.set("recording_id", recordingId);
     if (topic) params.set("topic", topic);
+    if (deckId) params.set("deck_id", deckId);
     const q = params.toString() ? `?${params}` : "";
     return fetch(`/api/notebooks/${nbId}/study${q}`).then(j);
   },

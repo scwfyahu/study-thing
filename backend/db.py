@@ -68,11 +68,22 @@ CREATE TABLE IF NOT EXISTS quizzes(
   questions TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS decks(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  notebook_id INTEGER NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
+  quiz_id INTEGER REFERENCES tests(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  scope TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'draft',
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE INDEX IF NOT EXISTS idx_recordings_notebook ON recordings(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_cards_recording ON cards(recording_id);
 CREATE INDEX IF NOT EXISTS idx_reviewers_notebook ON reviewers(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_tests_notebook ON tests(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_quizzes_notebook ON quizzes(notebook_id);
+CREATE INDEX IF NOT EXISTS idx_decks_notebook ON decks(notebook_id);
 """
 
 def _migrate(conn) -> None:
@@ -90,6 +101,9 @@ def _migrate(conn) -> None:
     if "due_date" not in cols:
         conn.execute("ALTER TABLE cards ADD COLUMN due_date TEXT")
         conn.execute("UPDATE cards SET due_date = date('now') WHERE due_date IS NULL")
+    if "deck_id" not in cols:
+        conn.execute("ALTER TABLE cards ADD COLUMN deck_id INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_deck ON cards(deck_id)")
     rcols = {r[1] for r in conn.execute("PRAGMA table_info(recordings)")}
     if "kind" not in rcols:
         conn.execute("ALTER TABLE recordings ADD COLUMN kind TEXT NOT NULL DEFAULT 'recording'")

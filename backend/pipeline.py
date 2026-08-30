@@ -244,7 +244,8 @@ def _process_notes(recording_id: int, rec) -> None:
         _set(recording_id, status="done", progress=1.0,
              note="No readable text found in the notes — blurry or not handwriting?")
         return
-    _extract_cards_from_texts(recording_id, rec, [(0, text)])
+    _set(recording_id, status="done", progress=1.0,
+         note="Notes read — flashcards generate when you confirm a quiz deck.")
 
 
 def process_recording(recording_id: int) -> None:
@@ -290,32 +291,13 @@ def process_recording(recording_id: int) -> None:
             except Exception:
                 pass
 
+            # NO auto card extraction — flashcards are generated per quiz deck (see deckgen).
             meaningful = [(i, t) for i, t in texts if _meaningful(t)]
             if not meaningful:
                 _set(recording_id, status="done", progress=1.0,
                      note="No clear speech found — the recording may be too noisy or empty.")
                 return
-
-            seen: set = set()
-            total_cards = 0
-            for k, (i, text) in enumerate(meaningful):
-                _set(recording_id, status="extracting", progress=0.60 + 0.38 * (k / max(len(meaningful), 1)))
-                raw = extract_cards(text, rec["notebook_name"], i, n, rec["topics"])
-                for q, a, topic in clean_cards(raw, seen):
-                    with db.get_conn() as conn:
-                        conn.execute(
-                            "INSERT OR IGNORE INTO cards(recording_id, question, answer, topic, position) VALUES (?,?,?,?,?)",
-                            (recording_id, q, a, topic, total_cards),
-                        )
-                    total_cards += 1
-
-            if total_cards == 0 and rec["topics"] and (rec["topics"] or "").strip():
-                _set(recording_id, status="done", progress=1.0,
-                     note=("0 flashcards — the audio content didn't match this notebook's Focus "
-                           "topics. Move the recording to the right class (dropdown) or edit "
-                           "Focus, then Re-process."))
-            else:
-                _set(recording_id, status="done", progress=1.0, note=f"{total_cards} flashcards")
+            _set(recording_id, status="done", progress=1.0, note="Transcribed — flashcards generate when you confirm a quiz deck.")
         except Exception as e:  # noqa: BLE001 — surface any failure on the recording row
             _set(recording_id, status="error", error=str(e)[:800])
         finally:

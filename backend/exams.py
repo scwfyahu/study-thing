@@ -128,11 +128,22 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
                         (a["date_text"], a["date_iso"], json.dumps(a["scope"], ensure_ascii=False),
                          recording_id, row["id"]),
                     )
-                continue  # already has a concrete date (or was upgraded)
-            conn.execute(
-                "INSERT INTO tests(notebook_id, recording_id, title, date_text, date_iso, scope) "
-                "VALUES (?,?,?,?,?,?)",
-                (notebook_id, recording_id, a["title"], a["date_text"], a["date_iso"],
-                 json.dumps(a["scope"], ensure_ascii=False)),
-            )
+                test_id = row["id"]
+            else:
+                cur = conn.execute(
+                    "INSERT INTO tests(notebook_id, recording_id, title, date_text, date_iso, scope) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (notebook_id, recording_id, a["title"], a["date_text"], a["date_iso"],
+                     json.dumps(a["scope"], ensure_ascii=False)),
+                )
+                test_id = cur.lastrowid
+            # auto-create a draft deck for this quiz (scope guessed later at confirm-time)
+            has_deck = conn.execute(
+                "SELECT 1 FROM decks WHERE quiz_id=?", (test_id,)
+            ).fetchone()
+            if not has_deck:
+                conn.execute(
+                    "INSERT INTO decks(notebook_id, quiz_id, title, scope, status) VALUES (?,?,?,'[]','draft')",
+                    (notebook_id, test_id, a["title"]),
+                )
     return len(seen)

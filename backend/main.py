@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, exams, notes, pipeline, quizzes, reviewers, srs, syllabus
+from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, srs, syllabus
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -166,7 +166,7 @@ def get_notebook(nb_id: int):
 
 
 @app.get("/api/notebooks/{nb_id}/study")
-def study_queue(nb_id: int, recording_id: int | None = None, topic: str | None = None):
+def study_queue(nb_id: int, recording_id: int | None = None, topic: str | None = None, deck_id: int | None = None):
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
         where = "r.notebook_id=?"
@@ -177,6 +177,9 @@ def study_queue(nb_id: int, recording_id: int | None = None, topic: str | None =
         if topic:
             where += " AND COALESCE(NULLIF(c.topic, ''), 'Untagged')=?"
             args.append(topic)
+        if deck_id:
+            where += " AND c.deck_id=?"
+            args.append(deck_id)
         rows = conn.execute(
             f"""SELECT c.id, c.question, c.answer, c.topic, c.reps, c.interval_days, c.due_date
                FROM cards c JOIN recordings r ON r.id = c.recording_id
@@ -231,7 +234,7 @@ def delete_notebook(nb_id: int):
 
 
 @app.get("/api/notebooks/{nb_id}/cards")
-def notebook_cards(nb_id: int, topic: str | None = None):
+def notebook_cards(nb_id: int, topic: str | None = None, deck_id: int | None = None):
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
         counts = conn.execute(
@@ -245,6 +248,9 @@ def notebook_cards(nb_id: int, topic: str | None = None):
         if topic:
             where += " AND COALESCE(NULLIF(c.topic, ''), 'Untagged')=?"
             args.append(topic)
+        if deck_id:
+            where += " AND c.deck_id=?"
+            args.append(deck_id)
         rows = conn.execute(
             f"""SELECT c.id, c.question, c.answer, c.topic, r.id AS recording_id, r.original_name
                FROM cards c JOIN recordings r ON r.id = c.recording_id
@@ -577,6 +583,123 @@ def download_reviewer(rid: int, format: str = "md"):
         media_type="text/markdown" if ext == "md" else "text/plain",
         headers={"Content-Disposition": f'attachment; filename="reviewer-{_slug(row["topic"])}.{ext}"'},
     )
+
+
+# ------------------------------------------------------------------ decks
+
+@app.get("/api/notebooks/{nb_id}/decks")
+def list_decks(nb_id: int):
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        rows = conn.execute(
+            """SELECT d.id, d.title, d.scope, d.status, d.error, d.created_at, d.quiz_id,
+                      (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) AS card_count
+               FROM decks d WHERE d.notebook_id=? ORDER BY d.id DESC""",
+            (nb_id,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["scope"] = json.loads(d["scope"] or "[]")
+        except Exception:
+            d["scope"] = []
+        out.append(d)
+    return out
+
+
+@app.post("/api/notebooks/{nb_id}/decks", status_code=201)
+def create_deck(nb_id: int, body: dict):
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+    title = (body.get("title") or "Untitled deck").strip()
+    scope = [str(s) for s in (body.get("scope") or [])]
+    quiz_id = body.get("quiz_id")
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO decks(notebook_id, quiz_id, title, scope, status) VALUES (?,?,?,?,'draft')",
+            (nb_id, quiz_id, title, json.dumps(scope, ensure_ascii=False)),
+        )
+        did = cur.lastrowid
+    return {"id": did, "title": title, "scope": scope, "status": "draft"}
+
+
+@app.post("/api/decks/{did}/guess")
+def guess_deck_scope(did: int):
+    with db.get_conn() as conn:
+        deck = conn.execute("SELECT * FROM decks WHERE id=?", (did,)).fetchone()
+        if deck is None:
+            raise HTTPException(404, "deck not found")
+        nb = conn.execute(
+            "SELECT name, topics, syllabus FROM notebooks WHERE id=?", (deck["notebook_id"],)
+        ).fetchone()
+        test = conn.execute(
+            "SELECT title, date_text, scope FROM tests WHERE id=?", (deck["quiz_id"],)
+        ).fetchone()
+    syllabus_topics = [t.strip() for t in (nb["topics"] or "").splitlines() if t.strip()]
+    ann = ""
+    if test:
+        scope_txt = ""
+        try:
+            scope_txt = ", ".join(json.loads(test["scope"] or "[]"))
+        except Exception:
+            pass
+        ann = f"{test['title']} ({test['date_text'] or ''}). Scope mentioned: {scope_txt}"
+    elif nb["syllabus"]:
+        ann = "Syllabus outline available."
+    scope = deckgen.guess_scope(nb["name"], syllabus_topics, ann)
+    return {"scope": scope}
+
+
+@app.patch("/api/decks/{did}")
+def update_deck(did: int, body: dict):
+    with db.get_conn() as conn:
+        deck = conn.execute("SELECT id FROM decks WHERE id=?", (did,)).fetchone()
+        if deck is None:
+            raise HTTPException(404, "deck not found")
+        fields = {}
+        if "title" in body:
+            fields["title"] = str(body["title"]).strip()
+        if "scope" in body:
+            fields["scope"] = json.dumps([str(s) for s in body["scope"]], ensure_ascii=False)
+        if fields:
+            sets = ", ".join(f"{k}=?" for k in fields)
+            conn.execute(f"UPDATE decks SET {sets} WHERE id=?", (*fields.values(), did))
+    return {"ok": True}
+
+
+@app.post("/api/decks/{did}/confirm", status_code=202)
+def confirm_deck(did: int, background_tasks: BackgroundTasks):
+    with db.get_conn() as conn:
+        deck = conn.execute("SELECT * FROM decks WHERE id=?", (did,)).fetchone()
+        if deck is None:
+            raise HTTPException(404, "deck not found")
+    background_tasks.add_task(deckgen.generate_deck_cards, did)
+    return {"ok": True, "status": "generating"}
+
+
+@app.delete("/api/decks/{did}")
+def delete_deck(did: int):
+    with db.get_conn() as conn:
+        deck = conn.execute("SELECT id FROM decks WHERE id=?", (did,)).fetchone()
+        if deck is None:
+            raise HTTPException(404, "deck not found")
+        conn.execute("DELETE FROM cards WHERE deck_id=?", (did,))
+        conn.execute("DELETE FROM decks WHERE id=?", (did,))
+    return {"ok": True}
+
+
+@app.get("/api/decks/{did}/export")
+def export_deck(did: int, format: str = "apkg"):
+    with db.get_conn() as conn:
+        deck = conn.execute("SELECT * FROM decks WHERE id=?", (did,)).fetchone()
+        if deck is None:
+            raise HTTPException(404, "deck not found")
+        nb = conn.execute("SELECT name FROM notebooks WHERE id=?", (deck["notebook_id"],)).fetchone()
+        cards = conn.execute(
+            "SELECT question, answer FROM cards WHERE deck_id=? ORDER BY position", (did,)
+        ).fetchall()
+    return _export([(c["question"], c["answer"]) for c in cards], format, f"{nb['name']} :: {deck['title']}", [nb["name"]])
 
 
 # ------------------------------------------------------------------ quizzes

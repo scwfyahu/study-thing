@@ -39,32 +39,25 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [autoFocusing, setAutoFocusing] = useState(false);
   const [srcTab, setSrcTab] = useState("recordings");
   const [selTopic, setSelTopic] = useState(null);
-  const [cards, setCards] = useState(null); // {topics, cards}
+  const [decks, setDecks] = useState([]);
+  const [scopeModal, setScopeModal] = useState(null); // deck being confirmed
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      const [n, rvs, ts, qzs] = await Promise.all([
-        api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId), api.quizzes(notebookId),
+      const [n, rvs, ts, qzs, dks] = await Promise.all([
+        api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId), api.quizzes(notebookId), api.decks(notebookId),
       ]);
       setNb(n);
       setReviewers(rvs);
       setTests(ts);
       setQuizzes(qzs);
+      setDecks(dks);
     } catch {
       /* transient */
     }
   }, [notebookId]);
 
-  const loadCards = useCallback(async (topic) => {
-    try {
-      setCards(await api.cards(notebookId, topic));
-    } catch { /* transient */ }
-  }, [notebookId]);
-
-  useEffect(() => {
-    loadCards(selTopic);
-  }, [selTopic, loadCards]);
 
 
   useEffect(() => {
@@ -91,13 +84,20 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   };
 
   const startStudy = async () => {
-    const q = await api.study(notebookId, null, selTopic);
+    const q = await api.study(notebookId);
     if (!q.cards.length) return alert("Nothing due — all cards scheduled. Study again when the queue fills up.");
-    onStudy(nb.name, null, selTopic);
+    onStudy(nb.name);
   };
 
   const editTopics = () => {
     onEditFocus(nb);
+  };
+
+  const newDeck = async () => {
+    const name = prompt("Deck name (e.g. Quarter 1 Exam):");
+    if (!name) return;
+    await api.createDeck(notebookId, { title: name });
+    load();
   };
 
   const autoFocus = async () => {
@@ -214,7 +214,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           )}
           <button className="btn" onClick={() => editTopics()}>Focus</button>
           <button className="primary" onClick={startStudy}>
-            ▶ Study{selTopic ? ` (${selTopic.slice(0, 28)}…)` : ""}{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}
+            ▶ Study{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}
           </button>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=apkg`}>Export Anki</a>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=csv`}>Export CSV</a>
@@ -290,37 +290,13 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
       <section className="rev-section">
         <div className="rev-bar">
-          <h4>Flashcards</h4>
-          <div className="topic-chips">
-            <button className={"chip" + (selTopic === null ? " on" : "")} onClick={() => setSelTopic(null)}>
-              All{cards ? ` (${cards.cards.length})` : ""}
-            </button>
-            {(cards?.topics || []).map((t) => (
-              <button
-                key={t.t}
-                className={"chip" + (selTopic === t.t ? " on" : "")}
-                onClick={() => setSelTopic(selTopic === t.t ? null : t.t)}
-              >
-                {t.t.slice(0, 34)}{t.t.length > 34 ? "…" : ""} ({t.n})
-              </button>
-            ))}
-          </div>
+          <h4>Flashcard decks</h4>
+          <button className="btn small" onClick={newDeck}>＋ New deck</button>
         </div>
-        {!cards && <p className="muted">Loading…</p>}
-        {cards && cards.cards.length === 0 && (
-          <p className="muted small-note">No flashcards{selTopic ? " for this topic" : " yet"} — upload a recording or notes, then wait for extraction.</p>
-        )}
-        {cards && cards.cards.length > 0 && (
-          <div className="cards">
-            {cards.cards.map((c) => (
-              <details key={c.id} className="card">
-                <summary>{c.question}</summary>
-                <p>{c.answer}</p>
-                {c.topic && <div className="muted small-note">📌 {c.topic}</div>}
-              </details>
-            ))}
-          </div>
-        )}
+        {decks.length === 0 && <p className="muted small-note">No decks yet. A deck is created automatically when a quiz/test is detected — or add one manually. Flashcards generate only after you confirm a deck scope.</p>}
+        {decks.map((dk) => (
+          <DeckRow key={dk.id} dk={dk} onChanged={load} onStudy={onStudy} nbName={nb.name} notebookId={notebookId} onConfirmScope={(d) => setScopeModal(d)} />
+        ))}
       </section>
 
       <section className="rev-section">
@@ -372,6 +348,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         ))}
       </section>
 
+      {scopeModal && <ScopeModal deck={scopeModal} onClose={() => setScopeModal(null)} />}
       {quizModal && (
         <QuizModal
           tests={tests}
@@ -382,6 +359,109 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
       )}
       {activeQuiz && (
         <QuizView quizId={activeQuiz.id} title={activeQuiz.title} onClose={() => setActiveQuiz(null)} />
+      )}
+    </div>
+  );
+}
+
+function ScopeModal({ deck, onSave, onClose }) {
+  const [scopeText, setScopeText] = useState((deck.scope || []).join("\n"));
+  const [guessing, setGuessing] = useState(false);
+
+  const guess = async () => {
+    setGuessing(true);
+    try {
+      const r = await api.guessDeckScope(deck.id);
+      setScopeText(r.scope.join("\n"));
+    } catch (e) {
+      alert(e.message);
+    }
+    setGuessing(false);
+  };
+
+  const save = async () => {
+    const scope = scopeText.split("\n").map((s) => s.trim()).filter(Boolean);
+    await api.updateDeck(deck.id, { scope });
+    await api.confirmDeck(deck.id);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Confirm scope — {deck.title}</h3>
+        <label>Scope <span className="muted">(flashcards will only cover these)</span></label>
+        <textarea rows={7} value={scopeText} onChange={(e) => setScopeText(e.target.value)}
+                  placeholder={"One scope topic per line.\nThe guess below is auto-generated from the test announcement + syllabus — edit freely."} />
+        <div className="modal-actions">
+          <button className="btn" onClick={guess} disabled={guessing}>{guessing ? "Guessing…" : "⟳ Auto-guess scope"}</button>
+          <span className="spacer" />
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn primary" onClick={save}>Confirm → generate flashcards</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope }) {
+  const [browse, setBrowse] = useState(null); // cards of this deck
+  const active = dk.status === "generating";
+
+  const studyThis = async () => {
+    const q = await api.study(notebookId, null, null, dk.id);
+    if (!q.cards.length) return alert("Nothing due in this deck yet.");
+    onStudy(dk.title, null, null, dk.id);
+  };
+
+  const del = async () => {
+    if (!confirm(`Delete deck "${dk.title}" and its ${dk.card_count} flashcards?`)) return;
+    await api.deleteDeck(dk.id);
+    onChanged();
+  };
+
+  const toggle = async () => {
+    if (browse === null) {
+      const c = await api.cards(dk.notebook_id, null, dk.id);
+      setBrowse(c.cards);
+    } else setBrowse(null);
+  };
+
+  return (
+    <div className="rec-row deck-row">
+      <div className="rec-top">
+        <button className="rec-toggle" onClick={toggle}>{browse !== null ? "▾" : "▸"}</button>
+        <span className="rec-name">{dk.title}</span>
+        <span className={`badge s-${dk.status === "ready" ? "done" : dk.status === "error" ? "error" : dk.status}`}>{dk.status}</span>
+        <span className="muted">{dk.card_count} cards</span>
+        <span className="spacer" />
+        {dk.status === "draft" && (
+          <button className="btn small primary" onClick={() => onConfirmScope(dk)}>Confirm scope</button>
+        )}
+        {dk.status === "ready" && (
+          <>
+            <button className="btn small" onClick={studyThis}>▶ Study</button>
+            <a className="btn small" href={`/api/decks/${dk.id}/export?format=apkg`}>Anki</a>
+            <a className="btn small" href={`/api/decks/${dk.id}/export?format=csv`}>CSV</a>
+          </>
+        )}
+        {active && <span className="muted small-note">generating…</span>}
+        <button className="icon-del" onClick={del} title="Delete deck">✕</button>
+      </div>
+      {dk.scope && dk.scope.length > 0 && (
+        <div className="muted small-note" style={{ marginTop: 6 }}>Scope: {dk.scope.join(" · ")}</div>
+      )}
+      {browse !== null && (
+        <div className="cards" style={{ marginTop: 10 }}>
+          {browse.length === 0 && <p className="muted">No cards.</p>}
+          {browse.map((c) => (
+            <details key={c.id} className="card">
+              <summary>{c.question}</summary>
+              <p>{c.answer}</p>
+              {c.topic && <div className="muted small-note">📌 {c.topic}</div>}
+            </details>
+          ))}
+        </div>
       )}
     </div>
   );
