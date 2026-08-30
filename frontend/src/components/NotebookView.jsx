@@ -148,6 +148,12 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
     onChanged();
   };
 
+  const reprocess = async () => {
+    if (!confirm("Re-run transcription + flashcard generation for this recording? (existing cards are rebuilt)")) return;
+    await api.reprocess(r.id);
+    onChanged();
+  };
+
   return (
     <div className="rec-row">
       <div className="rec-top">
@@ -159,6 +165,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
         {r.status === "done" && (
           <>
             <button className="btn small" onClick={studyThis}>▶ Study</button>
+            <button className="btn small" onClick={reprocess}>↻ Re-process</button>
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=apkg`}>Anki</a>
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=csv`}>CSV</a>
           </>

@@ -250,7 +250,13 @@ def process_recording(recording_id: int) -> None:
                         )
                     total_cards += 1
 
-            _set(recording_id, status="done", progress=1.0, note=f"{total_cards} flashcards")
+            if total_cards == 0 and rec["topics"] and (rec["topics"] or "").strip():
+                _set(recording_id, status="done", progress=1.0,
+                     note=("0 flashcards — the audio content didn't match this notebook's Focus "
+                           "topics. Move the recording to the right class (dropdown) or edit "
+                           "Focus, then Re-process."))
+            else:
+                _set(recording_id, status="done", progress=1.0, note=f"{total_cards} flashcards")
         except Exception as e:  # noqa: BLE001 — surface any failure on the recording row
             _set(recording_id, status="error", error=str(e)[:800])
         finally:

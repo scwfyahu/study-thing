@@ -41,5 +41,7 @@ export const api = {
     fd.append("file", file);
     return fetch(`/api/notebooks/${nbId}/recordings`, { method: "POST", body: fd }).then(j);
   },
+  reprocess: (id) =>
+    fetch(`/api/recordings/${id}/reprocess`, { method: "POST" }).then(j),
   deleteRecording: (id) => fetch(`/api/recordings/${id}`, { method: "DELETE" }).then(j),
 };

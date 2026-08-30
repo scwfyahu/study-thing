@@ -215,6 +215,18 @@ def delete_recording(rec_id: int):
     return {"ok": True}
 
 
+@app.post("/api/recordings/{rec_id}/reprocess")
+def reprocess_recording(rec_id: int, background_tasks: BackgroundTasks):
+    with db.get_conn() as conn:
+        row = conn.execute("SELECT stored_path FROM recordings WHERE id=?", (rec_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "recording not found")
+        conn.execute("DELETE FROM cards WHERE recording_id=?", (rec_id,))
+        conn.execute("DELETE FROM chunks WHERE recording_id=?", (rec_id,))
+    background_tasks.add_task(pipeline.process_recording, rec_id)
+    return {"id": rec_id, "status": "queued"}
+
+
 @app.get("/api/recordings/{rec_id}/cards")
 def recording_cards(rec_id: int):
     with db.get_conn() as conn:
