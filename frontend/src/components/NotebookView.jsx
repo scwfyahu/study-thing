@@ -18,7 +18,7 @@ function fmtDur(s) {
   return `${Math.floor(m / 60) ? `${Math.floor(m / 60)}h ` : ""}${m % 60}m`;
 }
 
-export default function NotebookView({ notebookId, onStudy }) {
+export default function NotebookView({ notebookId, notebooks, onStudy }) {
   const [nb, setNb] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -95,14 +95,14 @@ export default function NotebookView({ notebookId, onStudy }) {
       <section className="rec-list">
         {nb.recordings.length === 0 && <p className="muted">No recordings yet.</p>}
         {nb.recordings.map((r) => (
-          <RecordingRow key={r.id} r={r} onChanged={load} onStudyCards={onStudy} nbName={nb.name} />
+          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} notebooks={notebooks} />
         ))}
       </section>
     </div>
   );
 }
 
-function RecordingRow({ r, onChanged, onStudy, nbName }) {
+function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
   const [open, setOpen] = useState(false);
   const [cards, setCards] = useState(null);
   const active = ACTIVE.has(r.status);
@@ -128,6 +128,12 @@ function RecordingRow({ r, onChanged, onStudy, nbName }) {
     onChanged();
   };
 
+  const move = async (notebookId) => {
+    if (!notebookId || Number(notebookId) === r.notebook_id) return;
+    await api.moveRecording(r.id, Number(notebookId));
+    onChanged();
+  };
+
   return (
     <div className="rec-row">
       <div className="rec-top">
@@ -143,6 +149,16 @@ function RecordingRow({ r, onChanged, onStudy, nbName }) {
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=csv`}>CSV</a>
           </>
         )}
+        <select
+          className="move-select"
+          value={r.notebook_id}
+          onChange={(e) => move(e.target.value)}
+          title="Assign to class notebook"
+        >
+          {(notebooks || []).map((n) => (
+            <option key={n.id} value={n.id}>{n.name}</option>
+          ))}
+        </select>
         <button className="icon-del" onClick={del} title="Delete recording">✕</button>
       </div>
       {active && (

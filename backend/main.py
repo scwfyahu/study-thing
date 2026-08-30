@@ -71,6 +71,33 @@ def create_notebook(body: dict):
         return {"id": cur.lastrowid, "name": name}
 
 
+@app.patch("/api/notebooks/{nb_id}")
+def rename_notebook(nb_id: int, body: dict):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(422, "name is required")
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        try:
+            conn.execute("UPDATE notebooks SET name=? WHERE id=?", (name, nb_id))
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "a notebook with that name already exists")
+    return {"id": nb_id, "name": name}
+
+
+@app.patch("/api/recordings/{rec_id}")
+def update_recording(rec_id: int, body: dict):
+    if "notebook_id" not in body:
+        raise HTTPException(422, "notebook_id required")
+    target = body["notebook_id"]
+    with db.get_conn() as conn:
+        if conn.execute("SELECT 1 FROM recordings WHERE id=?", (rec_id,)).fetchone() is None:
+            raise HTTPException(404, "recording not found")
+        _nb_or_404(conn, target)
+        conn.execute("UPDATE recordings SET notebook_id=? WHERE id=?", (target, rec_id))
+    return {"id": rec_id, "notebook_id": target}
+
+
 @app.get("/api/notebooks/{nb_id}")
 def get_notebook(nb_id: int):
     with db.get_conn() as conn:

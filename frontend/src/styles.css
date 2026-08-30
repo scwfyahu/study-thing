@@ -45,8 +45,13 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
   position: absolute; top: 8px; right: 6px; display: none;
   background: none; border: 0; color: var(--muted); font-size: 15px;
 }
+.nb-del-del { right: 24px; }
 .nb-item:hover .nb-del { display: block; }
 .nb-del:hover { color: var(--bad); }
+.move-select {
+  background: var(--bg3); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 5px; font-size: 11.5px; max-width: 130px;
+}
 .new-nb { display: flex; gap: 6px; margin-top: 10px; }
 .new-nb input {
   flex: 1; background: var(--bg3); color: var(--text);

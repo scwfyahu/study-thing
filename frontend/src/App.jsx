@@ -48,6 +48,18 @@ export default function App() {
     refresh();
   };
 
+  const renameNotebook = async (nb, e) => {
+    e.stopPropagation();
+    const name = prompt("Rename class notebook:", nb.name);
+    if (!name || name.trim() === nb.name) return;
+    try {
+      await api.renameNotebook(nb.id, name.trim());
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   return (
     <div className="layout">
       <aside className="sidebar">
@@ -61,7 +73,8 @@ export default function App() {
             >
               <div className="nb-name">{nb.name}</div>
               <div className="nb-meta">{nb.recording_count} rec · {nb.card_count} cards</div>
-              <button className="nb-del" title="Delete notebook" onClick={(e) => deleteNotebook(nb, e)}>×</button>
+              <button className="nb-del" title="Rename" onClick={(e) => renameNotebook(nb, e)}>✎</button>
+              <button className="nb-del nb-del-del" title="Delete notebook" onClick={(e) => deleteNotebook(nb, e)}>×</button>
             </div>
           ))}
         </nav>
@@ -84,6 +97,7 @@ export default function App() {
           <NotebookView
             key={currentId}
             notebookId={currentId}
+            notebooks={notebooks}
             onStudy={(title, cards) => setStudy({ title, cards })}
           />
         ) : (
