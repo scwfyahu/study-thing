@@ -153,7 +153,14 @@ def get_notebook(nb_id: int):
                WHERE r.notebook_id=?""",
             (nb_id,),
         ).fetchone()
-    return {**dict(nb), "recordings": [dict(r) for r in recs],
+    out_recs = []
+    active_ids = sorted(r["id"] for r in recs if r["status"] in ("queued", "denoising", "splitting", "transcribing", "reading", "extracting"))
+    for r in recs:
+        d = dict(r)
+        if r["status"] == "queued":
+            d["queue_pos"] = active_ids.index(r["id"]) + 1
+        out_recs.append(d)
+    return {**dict(nb), "recordings": out_recs,
             "new_count": stats["new_count"] or 0, "due_count": stats["due_count"] or 0,
             "has_syllabus": has_syllabus}
 

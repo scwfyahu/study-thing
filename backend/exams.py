@@ -105,6 +105,12 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
 
     with db.get_conn() as conn:
         for a in seen.values():
+            dup = conn.execute(
+                "SELECT 1 FROM tests WHERE notebook_id=? AND title=? COLLATE NOCASE",
+                (notebook_id, a["title"]),
+            ).fetchone()
+            if dup:
+                continue  # daily uploads repeat the same announcements
             conn.execute(
                 "INSERT INTO tests(notebook_id, recording_id, title, date_text, date_iso, scope) "
                 "VALUES (?,?,?,?,?,?)",

@@ -177,6 +177,14 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
   if (!nb) return <div className="loading">Loading…</div>;
 
+  const recRows = (nb?.recordings || []).filter((r) => r.kind !== "notes");
+  const noteRows = (nb?.recordings || []).filter((r) => r.kind === "notes");
+  useEffect(() => {
+    if (srcTab === "recordings" && !recRows.length && noteRows.length) setSrcTab("notes");
+  }, [nb]);
+
+  const srcRows = srcTab === "notes" ? noteRows : recRows;
+
   return (
     <div className="notebook">
       <header className="nb-head">
@@ -244,9 +252,24 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         {busy ? "Uploading…" : "Drop lecture recordings or handwritten note photos/PDFs here"}
       </div>
 
+      <div className="src-tabs">
+        <button className={"src-tab" + (srcTab === "recordings" ? " active" : "")} onClick={() => setSrcTab("recordings")}>
+          Recordings ({recRows.length})
+        </button>
+        <button className={"src-tab" + (srcTab === "notes" ? " active" : "")} onClick={() => setSrcTab("notes")}>
+          Notes ({noteRows.length})
+        </button>
+      </div>
+
       <section className="rec-list">
-        {nb.recordings.length === 0 && <p className="muted">No recordings yet.</p>}
-        {nb.recordings.map((r) => (
+        {srcRows.length === 0 && (
+          <p className="muted">
+            {srcTab === "notes"
+              ? "No notes yet — drop photos or PDFs of handwritten notes above."
+              : "No recordings yet — drop lecture audio above."}
+          </p>
+        )}
+        {srcRows.map((r) => (
           <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} notebooks={notebooks} />
         ))}
       </section>
@@ -359,7 +382,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
         <button className="rec-toggle" onClick={toggle}>{open ? "▾" : "▸"}</button>
         <span className="rec-name">{r.original_name}</span>
         {r.kind === "notes" && <span className="badge">Notes</span>}
-        <span className={`badge s-${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
+        <span className={`badge s-${r.status}`}>{STATUS_LABEL[r.status] || r.status}{r.queue_pos ? ` (#${r.queue_pos})` : ""}</span>
         {r.duration_sec ? <span className="muted">{fmtDur(r.duration_sec)}</span> : null}
         <span className="spacer" />
         {r.status === "done" && (

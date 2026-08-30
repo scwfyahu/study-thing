@@ -176,7 +176,17 @@ h4 { font-size: 16px; line-height: 24px; }
 .dropzone.busy { pointer-events: none; opacity: .6; }
 .syl-zone { padding: 18px; margin-bottom: 2px; font-size: 13px; border-radius: var(--shape-sm); }
 
+/* source tabs */
+.src-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.src-tab {
+  background: transparent; color: var(--muted); border: none;
+  padding: 8px 18px; border-radius: var(--radius-pill); font-weight: 500;
+}
+.src-tab:hover { background: rgba(227,227,238,.06); }
+.src-tab.active { background: var(--secondary-container); color: var(--on-secondary-container); }
+
 /* ============================ cards / rows ============================ */
+.rec-list { min-height: 40px; }
 .rec-row {
   border-radius: var(--shape-lg); margin-bottom: 10px; padding: 14px 16px;
   background: var(--surface-container);
