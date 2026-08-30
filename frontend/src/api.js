@@ -44,4 +44,12 @@ export const api = {
   reprocess: (id) =>
     fetch(`/api/recordings/${id}/reprocess`, { method: "POST" }).then(j),
   deleteRecording: (id) => fetch(`/api/recordings/${id}`, { method: "DELETE" }).then(j),
+  reviewers: (nbId) => fetch(`/api/notebooks/${nbId}/reviewers`).then(j),
+  createReviewer: (nbId, topic) =>
+    fetch(`/api/notebooks/${nbId}/reviewers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic }),
+    }).then(j),
+  deleteReviewer: (id) => fetch(`/api/reviewers/${id}`, { method: "DELETE" }).then(j),
 };

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, pipeline
+from . import db, pipeline, reviewers
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -303,6 +303,72 @@ def export_notebook(nb_id: int, format: str = "apkg"):
         nb = _nb_or_404(conn, nb_id)
         cards = _fetch_cards_for(conn, "r.notebook_id=?", (nb_id,))
     return _export(cards, format, nb["name"], [nb["name"]])
+
+
+# ---------------------------------------------------------------- reviewers
+
+@app.get("/api/notebooks/{nb_id}/reviewers")
+def list_reviewers(nb_id: int):
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        rows = conn.execute(
+            "SELECT id, topic, created_at, length(content) AS chars FROM reviewers WHERE notebook_id=? ORDER BY id DESC",
+            (nb_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/notebooks/{nb_id}/reviewers", status_code=201)
+def create_reviewer(nb_id: int, body: dict, background_tasks: BackgroundTasks):
+    with db.get_conn() as conn:
+        nb = _nb_or_404(conn, nb_id)
+        nb = conn.execute("SELECT id, name, topics FROM notebooks WHERE id=?", (nb_id,)).fetchone()
+    topic = (body.get("topic") or "__all__").strip() or "__all__"
+    try:
+        content = reviewers.generate_reviewer(nb_id, nb["name"], nb["topics"], topic)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO reviewers(notebook_id, topic, content) VALUES (?,?,?)",
+            (nb_id, topic if topic != "__all__" else "All topics", content),
+        )
+        rid = cur.lastrowid
+    return {"id": rid, "topic": topic, "content": content}
+
+
+@app.get("/api/reviewers/{rid}")
+def get_reviewer(rid: int):
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, notebook_id, topic, content, created_at FROM reviewers WHERE id=?", (rid,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "reviewer not found")
+    return dict(row)
+
+
+@app.delete("/api/reviewers/{rid}")
+def delete_reviewer(rid: int):
+    with db.get_conn() as conn:
+        cur = conn.execute("DELETE FROM reviewers WHERE id=?", (rid,))
+    if cur.rowcount == 0:
+        raise HTTPException(404, "reviewer not found")
+    return {"ok": True}
+
+
+@app.get("/api/reviewers/{rid}/download")
+def download_reviewer(rid: int, format: str = "md"):
+    with db.get_conn() as conn:
+        row = conn.execute("SELECT topic, content FROM reviewers WHERE id=?", (rid,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "reviewer not found")
+    ext = "md" if format == "md" else "txt"
+    return PlainTextResponse(
+        row["content"],
+        media_type="text/markdown" if ext == "md" else "text/plain",
+        headers={"Content-Disposition": f'attachment; filename="reviewer-{_slug(row["topic"])}.{ext}"'},
+    )
 
 
 # ------------------------------------------------------------------- health

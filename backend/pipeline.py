@@ -31,6 +31,7 @@ EXTRACT_SCHEMA = {
                 "properties": {
                     "question": {"type": "string"},
                     "answer": {"type": "string"},
+                    "topic": {"type": "string"},
                 },
                 "required": ["question", "answer"],
             },
@@ -45,6 +46,7 @@ Rules:
 - Skip greetings, announcements, homework/logistics talk, and garbled noise.
 - Write self-contained questions a student could see on an exam. Answers are concise (1-3 sentences).
 - Each card covers one distinct concept or fact; no near-duplicate cards.
+- When the user provides syllabus topics: create cards ONLY about those topics, and tag each card with the single most relevant topic using the EXACT topic text from the list. If none matches, omit the topic field.
 - If the chunk contains no meaningful lecture content, return {"cards": []}."""
 
 
@@ -133,7 +135,8 @@ def extract_cards(text: str, notebook_name: str, chunk_idx: int, total: int, top
             "The course covers ONLY these syllabus topics:\n"
             f"{topics.strip()}\n"
             "Create flashcards ONLY about these topics. Skip personal anecdotes, classroom "
-            "logistics, and any content that does not map to a listed topic.\n\n"
+            "logistics, and any content that does not map to a listed topic. "
+            "Tag each card with the exact topic text it belongs to.\n\n"
         )
     user_msg = (
         f"Class: {notebook_name}\n"
@@ -169,6 +172,7 @@ def _norm_key(s: str) -> str:
 
 
 def clean_cards(raw_cards: list, seen: set, cap: int = MAX_CARDS_PER_CHUNK) -> list:
+    """Returns list of (question, answer, topic_or_None)."""
     out = []
     for c in raw_cards:
         if not isinstance(c, dict):
@@ -181,7 +185,8 @@ def clean_cards(raw_cards: list, seen: set, cap: int = MAX_CARDS_PER_CHUNK) -> l
         if not key or key in seen:
             continue
         seen.add(key)
-        out.append((q, a))
+        topic = str(c.get("topic") or "").strip() or None
+        out.append((q, a, topic))
         if len(out) >= cap:
             break
     return out
@@ -242,11 +247,11 @@ def process_recording(recording_id: int) -> None:
             for k, (i, text) in enumerate(meaningful):
                 _set(recording_id, status="extracting", progress=0.60 + 0.38 * (k / max(len(meaningful), 1)))
                 raw = extract_cards(text, rec["notebook_name"], i, n, rec["topics"])
-                for q, a in clean_cards(raw, seen):
+                for q, a, topic in clean_cards(raw, seen):
                     with db.get_conn() as conn:
                         conn.execute(
-                            "INSERT OR IGNORE INTO cards(recording_id, question, answer, position) VALUES (?,?,?,?)",
-                            (recording_id, q, a, total_cards),
+                            "INSERT OR IGNORE INTO cards(recording_id, question, answer, topic, position) VALUES (?,?,?,?,?)",
+                            (recording_id, q, a, topic, total_cards),
                         )
                     total_cards += 1
 

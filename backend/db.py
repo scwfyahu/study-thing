@@ -33,12 +33,26 @@ CREATE TABLE IF NOT EXISTS cards(
   recording_id INTEGER NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
   question TEXT NOT NULL,
   answer TEXT NOT NULL,
+  topic TEXT,
   position INTEGER NOT NULL DEFAULT 0,
   UNIQUE(recording_id, question)
 );
+CREATE TABLE IF NOT EXISTS reviewers(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  notebook_id INTEGER NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
+  topic TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE INDEX IF NOT EXISTS idx_recordings_notebook ON recordings(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_cards_recording ON cards(recording_id);
+CREATE INDEX IF NOT EXISTS idx_reviewers_notebook ON reviewers(notebook_id);
 """
+
+def _migrate(conn) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
+    if "topic" not in cols:
+        conn.execute("ALTER TABLE cards ADD COLUMN topic TEXT")
 
 
 def get_conn() -> sqlite3.Connection:
@@ -52,3 +66,4 @@ def get_conn() -> sqlite3.Connection:
 def init_schema() -> None:
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)

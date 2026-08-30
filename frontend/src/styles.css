@@ -56,6 +56,27 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
   font-size: 12.5px; color: var(--muted); margin-top: 4px; max-width: 520px;
   white-space: pre-line;
 }
+
+/* ---------- reviewers ---------- */
+.rev-section { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 18px; }
+.rev-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.rev-bar h4 { font-size: 15px; flex: 1; }
+.rev-bar select {
+  background: var(--bg3); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 9px; font: inherit; max-width: 320px;
+}
+.rev-row {
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg2);
+  margin-bottom: 8px; padding: 10px 14px; position: relative;
+}
+.rev-main { background: none; border: 0; color: var(--text); text-align: left; font: inherit; display: flex; gap: 14px; align-items: baseline; width: calc(100% - 180px); cursor: pointer; }
+.rev-topic { font-weight: 600; }
+.rev-row .icon-del { position: absolute; right: 10px; top: 9px; }
+.rev-content {
+  margin-top: 10px; padding: 14px; background: var(--bg3); border-radius: 8px;
+  white-space: pre-wrap; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 60vh; overflow: auto;
+}
 .new-nb { display: flex; gap: 6px; margin-top: 10px; }
 .new-nb input {
   flex: 1; background: var(--bg3); color: var(--text);

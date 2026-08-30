@@ -22,11 +22,18 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [nb, setNb] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reviewers, setReviewers] = useState([]);
+  const [revBusy, setRevBusy] = useState(false);
+  const [revTopic, setRevTopic] = useState("__all__");
+  const [openRev, setOpenRev] = useState(null); // reviewer id expanded
+  const [revContent, setRevContent] = useState(null);
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      setNb(await api.notebook(notebookId));
+      const [n, rvs] = await Promise.all([api.notebook(notebookId), api.reviewers(notebookId)]);
+      setNb(n);
+      setReviewers(rvs);
     } catch {
       /* transient */
     }
@@ -63,6 +70,42 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
   const editTopics = () => {
     onEditFocus(nb);
+  };
+
+  const topicOptions = (nb?.topics || "")
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const genReviewer = async () => {
+    setRevBusy(true);
+    try {
+      const created = await api.createReviewer(notebookId, revTopic);
+      await load();
+      setOpenRev(created.id);
+      setRevContent(created.content);
+    } catch (ex) {
+      alert(ex.message);
+    }
+    setRevBusy(false);
+  };
+
+  const toggleRev = async (id) => {
+    if (openRev === id) {
+      setOpenRev(null);
+      setRevContent(null);
+      return;
+    }
+    setOpenRev(id);
+    const r = await fetch(`/api/reviewers/${id}`).then((x) => x.json());
+    setRevContent(r.content);
+  };
+
+  const delRev = async (id) => {
+    if (!confirm("Delete this reviewer?")) return;
+    await api.deleteReviewer(id);
+    setOpenRev(null);
+    load();
   };
 
   if (!nb) return <div className="loading">Loading…</div>;
@@ -104,6 +147,36 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         {nb.recordings.length === 0 && <p className="muted">No recordings yet.</p>}
         {nb.recordings.map((r) => (
           <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} notebooks={notebooks} />
+        ))}
+      </section>
+
+      <section className="rev-section">
+        <div className="rev-bar">
+          <h4>Reviewers</h4>
+          <select value={revTopic} onChange={(e) => setRevTopic(e.target.value)} disabled={revBusy}>
+            <option value="__all__">All topics</option>
+            {topicOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <button className="btn primary" onClick={genReviewer} disabled={revBusy}>
+            {revBusy ? "Writing…" : "＋ Generate reviewer"}
+          </button>
+        </div>
+        {reviewers.length === 0 && <p className="muted small-note">No reviewers yet — generate a study guide from a topic's flashcards.</p>}
+        {reviewers.map((rv) => (
+          <div key={rv.id} className="rev-row">
+            <button className="rev-main" onClick={() => toggleRev(rv.id)}>
+              <span className="rev-topic">{rv.topic}</span>
+              <span className="muted">{rv.created_at.slice(0, 16).replace("T", " ")} · {Math.round(rv.chars / 100) / 10}k chars</span>
+            </button>
+            <a className="btn small" href={`/api/reviewers/${rv.id}/download?format=md`}>.md</a>
+            <a className="btn small" href={`/api/reviewers/${rv.id}/download?format=txt`}>.txt</a>
+            <button className="icon-del" onClick={() => delRev(rv.id)} title="Delete reviewer">✕</button>
+            {openRev === rv.id && (
+              <pre className="rev-content">{revContent}</pre>
+            )}
+          </div>
         ))}
       </section>
     </div>
