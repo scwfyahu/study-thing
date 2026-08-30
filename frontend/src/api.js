@@ -56,4 +56,14 @@ export const api = {
   scanTests: (nbId) =>
     fetch(`/api/notebooks/${nbId}/tests/scan`, { method: "POST" }).then(j),
   deleteTest: (id) => fetch(`/api/tests/${id}`, { method: "DELETE" }).then(j),
+  study: (nbId, recordingId) => {
+    const q = recordingId ? `?recording_id=${recordingId}` : "";
+    return fetch(`/api/notebooks/${nbId}/study${q}`).then(j);
+  },
+  rate: (cardId, rating) =>
+    fetch("/api/ratings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ card_id: cardId, rating }),
+    }).then(j),
 };

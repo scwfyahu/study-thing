@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, exams, pipeline, reviewers
+from . import db, exams, pipeline, reviewers, srs
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -128,7 +128,64 @@ def get_notebook(nb_id: int):
                FROM recordings WHERE notebook_id=? ORDER BY id DESC""",
             (nb_id,),
         ).fetchall()
-    return {**dict(nb), "recordings": [dict(r) for r in recs]}
+        stats = conn.execute(
+            """SELECT
+                 SUM(CASE WHEN c.reps=0 THEN 1 ELSE 0 END) AS new_count,
+                 SUM(CASE WHEN c.reps>0 AND c.due_date <= date('now') THEN 1 ELSE 0 END) AS due_count
+               FROM cards c JOIN recordings r ON r.id=c.recording_id
+               WHERE r.notebook_id=?""",
+            (nb_id,),
+        ).fetchone()
+    return {**dict(nb), "recordings": [dict(r) for r in recs],
+            "new_count": stats["new_count"] or 0, "due_count": stats["due_count"] or 0}
+
+
+@app.get("/api/notebooks/{nb_id}/study")
+def study_queue(nb_id: int, recording_id: int | None = None):
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        if recording_id:
+            extra = "AND c.recording_id=?"
+            args = (nb_id, recording_id)
+        else:
+            extra = ""
+            args = (nb_id,)
+        rows = conn.execute(
+            f"""SELECT c.id, c.question, c.answer, c.topic, c.reps, c.interval_days, c.due_date
+               FROM cards c JOIN recordings r ON r.id = c.recording_id
+               WHERE r.notebook_id=? AND (c.reps=0 OR c.due_date <= date('now')) {extra}
+               ORDER BY (c.reps=0) DESC, c.due_date, c.id""",
+            args,
+        ).fetchall()
+    cards = [dict(r) for r in rows]
+    return {
+        "cards": cards,
+        "new_count": sum(1 for c in cards if c["reps"] == 0),
+        "due_count": sum(1 for c in cards if c["reps"] > 0),
+    }
+
+
+@app.post("/api/ratings")
+def rate_card(body: dict):
+    import datetime as _dt
+
+    card_id = body.get("card_id")
+    rating = body.get("rating")
+    if rating not in ("again", "hard", "good", "easy"):
+        raise HTTPException(422, "rating must be again|hard|good|easy")
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, ease, interval_days, reps, lapses, due_date FROM cards WHERE id=?", (card_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "card not found")
+        upd = srs.apply_rating(dict(row), rating, _dt.date.today())
+        conn.execute(
+            """UPDATE cards SET ease=?, interval_days=?, reps=?, lapses=?, due_date=?
+               WHERE id=?""",
+            (upd["ease"], upd["interval_days"], upd["reps"], upd["lapses"], upd["due_date"], card_id),
+        )
+    return {"ok": True, **upd}
 
 
 @app.delete("/api/notebooks/{nb_id}")

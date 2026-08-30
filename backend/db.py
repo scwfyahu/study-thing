@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS cards(
   answer TEXT NOT NULL,
   topic TEXT,
   position INTEGER NOT NULL DEFAULT 0,
+  ease REAL NOT NULL DEFAULT 2.5,
+  interval_days INTEGER NOT NULL DEFAULT 0,
+  reps INTEGER NOT NULL DEFAULT 0,
+  lapses INTEGER NOT NULL DEFAULT 0,
+  due_date TEXT NOT NULL DEFAULT (date('now')),
   UNIQUE(recording_id, question)
 );
 CREATE TABLE IF NOT EXISTS reviewers(
@@ -64,6 +69,18 @@ def _migrate(conn) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
     if "topic" not in cols:
         conn.execute("ALTER TABLE cards ADD COLUMN topic TEXT")
+    for col, ddl in (
+        ("ease", "REAL NOT NULL DEFAULT 2.5"),
+        ("interval_days", "INTEGER NOT NULL DEFAULT 0"),
+        ("reps", "INTEGER NOT NULL DEFAULT 0"),
+        ("lapses", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE cards ADD COLUMN {col} {ddl}")
+    if "due_date" not in cols:
+        conn.execute("ALTER TABLE cards ADD COLUMN due_date TEXT")
+        conn.execute("UPDATE cards SET due_date = date('now') WHERE due_date IS NULL")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
 
 
 def get_conn() -> sqlite3.Connection:

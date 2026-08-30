@@ -1,67 +1,95 @@
 import React, { useEffect, useState } from "react";
+import { api } from "../api.js";
 
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+const RATINGS = [
+  { key: "again", label: "Again", kbd: "1", cls: "bad", hint: "didn't know — comes back today" },
+  { key: "hard", label: "Hard", kbd: "2", cls: "", hint: "barely knew it" },
+  { key: "good", label: "Good", kbd: "3", cls: "", hint: "knew it" },
+  { key: "easy", label: "Easy", kbd: "4", cls: "good", hint: "too easy — skip ahead" },
+];
 
-export default function StudyView({ title, cards, onClose }) {
-  const [order, setOrder] = useState(() => shuffle(cards));
+export default function StudyView({ notebookId, recordingId, title, onClose }) {
+  const [queue, setQueue] = useState(null);
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const [known, setKnown] = useState(() => new Set());
+  const [err, setErr] = useState("");
+  const [doneCount, setDoneCount] = useState(0);
 
-  const card = order[idx];
+  useEffect(() => {
+    api
+      .study(notebookId, recordingId)
+      .then((q) => setQueue(q))
+      .catch((e) => setErr(e.message));
+  }, [notebookId, recordingId]);
 
-  const next = () => { setFlipped(false); setIdx((i) => Math.min(i + 1, order.length - 1)); };
-  const prev = () => { setFlipped(false); setIdx((i) => Math.max(i - 1, 0)); };
-  const mark = (isKnown) => {
-    const s = new Set(known);
-    isKnown ? s.add(card.q) : s.delete(card.q);
-    setKnown(s);
-    if (idx < order.length - 1) next();
+  const rate = async (rating) => {
+    if (!queue) return;
+    const card = queue.cards[idx];
+    try {
+      await api.rate(card.id, rating);
+    } catch (e) {
+      setErr(e.message);
+      return;
+    }
+    setDoneCount((d) => d + 1);
+    const next = queue.cards.filter((_, i) => i !== idx);
+    setQueue({ ...queue, cards: next });
+    setIdx(0);
+    setFlipped(false);
   };
 
   useEffect(() => {
     const h = (e) => {
       if (e.key === " ") { e.preventDefault(); setFlipped((f) => !f); }
-      if (e.key === "ArrowRight") next();
-      if (e.key === "ArrowLeft") { setFlipped(false); setIdx((i) => Math.max(i - 1, 0)); }
+      if (e.key === "1") rate("again");
+      if (e.key === "2") rate("hard");
+      if (e.key === "3") rate("good");
+      if (e.key === "4") rate("easy");
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [order.length, idx]);
+  });
 
-  if (!card) return <div className="empty"><p>No cards.</p></div>;
+  if (err) return <div className="empty"><p className="banner error">{err}</p><button className="btn" onClick={onClose}>← Back</button></div>;
+  if (!queue) return <div className="loading">Loading study queue…</div>;
 
+  if (queue.cards.length === 0) {
+    return (
+      <div className="study done">
+        <h2>🎉 Queue done</h2>
+        <p className="muted">{doneCount} card{doneCount === 1 ? "" : "s"} reviewed. Review again after the due dates come up — every "Good" stretches the interval.</p>
+        <div className="study-controls">
+          <button className="btn" onClick={() => api.study(notebookId, recordingId).then(setQueue)}>Restart (any due)</button>
+          <button className="btn primary" onClick={onClose}>← Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  const card = queue.cards[idx];
+  const left = queue.cards.length - 1;
   return (
     <div className="study">
       <header className="study-head">
         <button className="btn" onClick={onClose}>← Back</button>
         <h3>{title}</h3>
-        <span className="muted">{idx + 1} / {order.length} · known {known.size}</span>
+        <span className="muted">{queue.due_count} due · {queue.new_count} new · {left} left this session</span>
       </header>
-      <div
-        className={"study-card" + (flipped ? " flipped" : "")}
-        onClick={() => setFlipped((f) => !f)}
-        title="Click or press Space to flip"
-      >
-        {flipped ? <p className="answer">{card.a}</p> : <p className="question">{card.q}</p>}
-        <span className="flip-hint">{flipped ? "question" : "answer"}</span>
+      {card.reps > 0 && <div className="srs-meta muted">rep {card.reps} · interval {card.interval_days}d · due {card.due_date}</div>}
+      <div className={"study-card" + (flipped ? " flipped" : "")} onClick={() => setFlipped((f) => !f)}>
+        {flipped ? <p className="answer">{card.answer}</p> : <p className="question">{card.question}</p>}
+        <span className="flip-hint">{flipped ? "answer" : "question"} — click or Space</span>
       </div>
-      <div className="study-controls">
-        <button className="btn" onClick={() => mark(false)}>✗ Not yet</button>
-        <button className="btn" onClick={() => { setFlipped(false); setOrder(shuffle(cards)); setIdx(0); }}>⇄ Shuffle</button>
-        <button className="btn good" onClick={() => mark(true)}>✓ Got it</button>
-      </div>
-      <div className="study-nav">
-        <button className="btn" disabled={idx === 0} onClick={() => { setFlipped(false); setIdx((i) => Math.max(i - 1, 0)); }}>← Prev</button>
-        <button className="btn" disabled={idx === order.length - 1} onClick={next}>Next →</button>
-      </div>
+      {flipped && (
+        <div className="study-controls">
+          {RATINGS.map((r) => (
+            <button key={r.key} className={"btn rate " + r.cls} title={r.hint} onClick={() => rate(r.key)}>
+              {r.kbd}. {r.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {!flipped && <p className="muted study-hint">Flip to rate the card</p>}
     </div>
   );
 }

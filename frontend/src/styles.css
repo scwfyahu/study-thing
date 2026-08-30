@@ -194,6 +194,11 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
   font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
 }
 .study-controls { display: flex; justify-content: center; gap: 12px; margin-top: 22px; }
+.btn.rate { min-width: 92px; }
+.btn.rate.bad { border-color: var(--bad); color: var(--bad); }
+.btn.rate.good { border-color: var(--good); color: var(--good); }
+.study-hint { text-align: center; margin-top: 14px; }
+.srs-meta { text-align: center; font-size: 12px; margin-bottom: 8px; }
 .study-nav { display: flex; justify-content: center; gap: 12px; margin-top: 10px; }
 
 @media (max-width: 720px) {

@@ -67,9 +67,9 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   };
 
   const startStudy = async () => {
-    const cards = await api.cards(notebookId);
-    if (!cards.length) return alert("No flashcards yet — wait for a recording to finish.");
-    onStudy(nb.name, cards.map((c) => ({ q: c.question, a: c.answer })));
+    const q = await api.study(notebookId);
+    if (!q.cards.length) return alert("Nothing due — all cards scheduled. Study again when the queue fills up.");
+    onStudy(nb.name, null, notebookId);
   };
 
   const editTopics = () => {
@@ -142,7 +142,9 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         </div>
         <div className="nb-actions">
           <button className="btn" onClick={() => editTopics()}>Focus</button>
-          <button className="primary" onClick={startStudy}>▶ Study all</button>
+          <button className="primary" onClick={startStudy}>
+            ▶ Study{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}
+          </button>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=apkg`}>Export Anki</a>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=csv`}>Export CSV</a>
         </div>
@@ -252,7 +254,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
   const studyThis = async () => {
     const rows = await fetch(`/api/recordings/${r.id}/cards`).then((x) => x.json());
     if (!rows.length) return alert("No flashcards in this recording yet.");
-    onStudy(r.original_name, rows.map((c) => ({ q: c.question, a: c.answer })));
+    onStudy(r.original_name, r.id);
   };
 
   const del = async () => {

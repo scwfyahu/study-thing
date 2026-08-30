@@ -8,7 +8,7 @@ export default function App() {
   const [notebooks, setNotebooks] = useState([]);
   const [currentId, setCurrentId] = useState(null);
   const [modal, setModal] = useState(null); // {mode:'create'} | {mode:'edit', nb}
-  const [study, setStudy] = useState(null); // {title, cards}
+  const [study, setStudy] = useState(null); // {title, notebookId}
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
@@ -88,13 +88,18 @@ export default function App() {
       <main className="main">
         {error && <div className="banner error">{error}</div>}
         {study ? (
-          <StudyView title={study.title} cards={study.cards} onClose={() => setStudy(null)} />
+          <StudyView
+            notebookId={study.notebookId}
+            recordingId={study.recordingId}
+            title={study.title}
+            onClose={() => setStudy(null)}
+          />
         ) : currentId ? (
           <NotebookView
             key={currentId}
             notebookId={currentId}
             notebooks={notebooks}
-            onStudy={(title, cards) => setStudy({ title, cards })}
+            onStudy={(title, recordingId) => setStudy({ title, notebookId: currentId, recordingId })}
             onEditFocus={(nb) => setModal({ mode: "edit", nb })}
           />
         ) : (
