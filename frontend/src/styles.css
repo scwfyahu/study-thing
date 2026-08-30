@@ -77,6 +77,25 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
   white-space: pre-wrap; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
   max-height: 60vh; overflow: auto;
 }
+
+/* ---------- tests ---------- */
+.tests-section { margin-bottom: 22px; }
+.test-card { border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); padding: 10px 14px; margin-bottom: 8px; }
+.test-card.dated { border-color: rgba(108,158,248,.45); }
+.test-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.test-title { font-weight: 650; }
+.test-date { color: var(--muted); }
+.test-iso { background: rgba(108,158,248,.14); color: var(--accent); padding: 2px 9px; border-radius: 20px; font-size: 12px; }
+.test-scope { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+.test-scope li { margin: 2px 0; }
+
+/* ---------- outline ---------- */
+.rev-body { margin-top: 10px; padding: 14px; background: var(--bg3); border-radius: 8px; max-height: 62vh; overflow: auto; }
+.outline ul { list-style: none; margin: 0; padding-left: 14px; }
+.ol-root { padding-left: 0 !important; }
+.outline li { position: relative; padding: 2px 0 2px 12px; border-left: 1px solid var(--line); }
+.outline .ol-text { display: inline-block; }
+.outline li:hover { background: rgba(108,158,248,.05); }
 .new-nb { display: flex; gap: 6px; margin-top: 10px; }
 .new-nb input {
   flex: 1; background: var(--bg3); color: var(--text);

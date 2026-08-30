@@ -1,4 +1,5 @@
 """StudyThing API — notebooks (classes) contain recordings; recordings produce flashcards."""
+import json
 import re
 import shutil
 import sqlite3
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, pipeline, reviewers
+from . import db, exams, pipeline, reviewers
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -303,6 +304,60 @@ def export_notebook(nb_id: int, format: str = "apkg"):
         nb = _nb_or_404(conn, nb_id)
         cards = _fetch_cards_for(conn, "r.notebook_id=?", (nb_id,))
     return _export(cards, format, nb["name"], [nb["name"]])
+
+
+@app.get("/api/notebooks/{nb_id}/tests")
+def list_tests(nb_id: int):
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        rows = conn.execute(
+            """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.created_at,
+                      r.original_name AS recording_name
+               FROM tests t LEFT JOIN recordings r ON r.id = t.recording_id
+               WHERE t.notebook_id=? ORDER BY
+                 CASE WHEN t.date_iso IS NULL THEN 1 ELSE 0 END, t.date_iso ASC, t.id DESC""",
+            (nb_id,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["scope"] = json.loads(d["scope"] or "[]")
+        except Exception:
+            d["scope"] = []
+        out.append(d)
+    return out
+
+
+@app.post("/api/notebooks/{nb_id}/tests/scan")
+def scan_tests(nb_id: int, background_tasks: BackgroundTasks):
+    import datetime as _dt
+
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        recs = conn.execute(
+            "SELECT id FROM recordings WHERE notebook_id=? AND status='done'", (nb_id,)
+        ).fetchall()
+    if not recs:
+        return {"ok": True, "scanned": 0}
+    conn = db.get_conn()
+    conn.execute("DELETE FROM tests WHERE notebook_id=?", (nb_id,))
+    conn.commit()
+    conn.close()
+    today = _dt.date.today().isoformat()
+    n = 0
+    for r in recs:
+        n += exams.scan_recording(r["id"], nb_id, today)
+    return {"ok": True, "scanned": n}
+
+
+@app.delete("/api/tests/{tid}")
+def delete_test(tid: int):
+    with db.get_conn() as conn:
+        cur = conn.execute("DELETE FROM tests WHERE id=?", (tid,))
+    if cur.rowcount == 0:
+        raise HTTPException(404, "test not found")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- reviewers

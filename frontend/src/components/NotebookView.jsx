@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import Outline from "./Outline.jsx";
 
 const STATUS_LABEL = {
   queued: "Queued",
@@ -27,13 +28,16 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [revTopic, setRevTopic] = useState("__all__");
   const [openRev, setOpenRev] = useState(null); // reviewer id expanded
   const [revContent, setRevContent] = useState(null);
+  const [tests, setTests] = useState([]);
+  const [scanning, setScanning] = useState(false);
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      const [n, rvs] = await Promise.all([api.notebook(notebookId), api.reviewers(notebookId)]);
+      const [n, rvs, ts] = await Promise.all([api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId)]);
       setNb(n);
       setReviewers(rvs);
+      setTests(ts);
     } catch {
       /* transient */
     }
@@ -108,6 +112,25 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
     load();
   };
 
+  const scanForTests = async () => {
+    setScanning(true);
+    await api.scanTests(notebookId);
+    setScanning(false);
+    load();
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso + "T00:00:00");
+    const days = Math.ceil((d - new Date()) / 86400000);
+    return d.toDateString().slice(0, 10) + (days < 0 ? ` (${-days}d ago)` : days === 0 ? " (today)" : ` (in ${days}d)`);
+  };
+
+  const deleteTest = async (id) => {
+    await api.deleteTest(id);
+    load();
+  };
+
   if (!nb) return <div className="loading">Loading…</div>;
 
   return (
@@ -124,6 +147,33 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=csv`}>Export CSV</a>
         </div>
       </header>
+
+      <section className="tests-section">
+        <div className="rev-bar">
+          <h4>Upcoming tests</h4>
+          <button className="btn small" onClick={scanForTests} disabled={scanning}>
+            {scanning ? "Scanning transcripts…" : "⟳ Scan for test announcements"}
+          </button>
+        </div>
+        {tests.length === 0 && <p className="muted small-note">No tests found yet — recordings get scanned automatically after processing, or scan manually.</p>}
+        {tests.map((t) => (
+          <div key={t.id} className={"test-card" + (t.date_iso ? " dated" : "")}>
+            <div className="test-head">
+              <span className="test-title">🗓 {t.title}</span>
+              {t.date_text && <span className="test-date">{t.date_text}</span>}
+              {fmtDate(t.date_iso) && <span className="test-iso">{fmtDate(t.date_iso)}</span>}
+              <span className="spacer" />
+              <span className="muted small-note">{t.recording_name || ""}</span>
+              <button className="icon-del" onClick={() => deleteTest(t.id)} title="Delete">✕</button>
+            </div>
+            {t.scope?.length > 0 && (
+              <ul className="test-scope">
+                {t.scope.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            )}
+          </div>
+        ))}
+      </section>
 
       <div
         className={"dropzone" + (dragging ? " over" : "") + (busy ? " busy" : "")}
@@ -174,7 +224,9 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
             <a className="btn small" href={`/api/reviewers/${rv.id}/download?format=txt`}>.txt</a>
             <button className="icon-del" onClick={() => delRev(rv.id)} title="Delete reviewer">✕</button>
             {openRev === rv.id && (
-              <pre className="rev-content">{revContent}</pre>
+              <div className="rev-body">
+                <Outline content={revContent} />
+              </div>
             )}
           </div>
         ))}

@@ -52,4 +52,8 @@ export const api = {
       body: JSON.stringify({ topic }),
     }).then(j),
   deleteReviewer: (id) => fetch(`/api/reviewers/${id}`, { method: "DELETE" }).then(j),
+  tests: (nbId) => fetch(`/api/notebooks/${nbId}/tests`).then(j),
+  scanTests: (nbId) =>
+    fetch(`/api/notebooks/${nbId}/tests/scan`, { method: "POST" }).then(j),
+  deleteTest: (id) => fetch(`/api/tests/${id}`, { method: "DELETE" }).then(j),
 };
