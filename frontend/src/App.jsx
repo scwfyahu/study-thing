@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
+import NotebookModal from "./components/NotebookModal.jsx";
 import NotebookView from "./components/NotebookView.jsx";
 import StudyView from "./components/StudyView.jsx";
 
 export default function App() {
   const [notebooks, setNotebooks] = useState([]);
   const [currentId, setCurrentId] = useState(null);
-  const [newName, setNewName] = useState("");
+  const [modal, setModal] = useState(null); // {mode:'create'} | {mode:'edit', nb}
   const [study, setStudy] = useState(null); // {title, cards}
   const [error, setError] = useState("");
 
@@ -27,17 +28,18 @@ export default function App() {
 
   const current = notebooks.find((n) => n.id === currentId) || null;
 
-  const createNotebook = async (e) => {
-    e.preventDefault();
-    if (!newName.trim()) return;
-    try {
-      const nb = await api.createNotebook(newName.trim());
-      setNewName("");
-      await refresh();
-      setCurrentId(nb.id);
-    } catch (err) {
-      setError(err.message);
-    }
+  const createNotebook = async (name, topics) => {
+    const nb = await api.createNotebook(name, topics);
+    await refresh();
+    setCurrentId(nb.id);
+  };
+
+  const saveNotebook = async (name, topics) => {
+    if (modal?.mode === "create") return createNotebook(name, topics);
+    const nb = modal.nb;
+    if (name !== nb.name) await api.renameNotebook(nb.id, name);
+    if (topics !== (nb.topics || "")) await api.setTopics(nb.id, topics);
+    await refresh();
   };
 
   const deleteNotebook = async (nb, e) => {
@@ -50,14 +52,7 @@ export default function App() {
 
   const renameNotebook = async (nb, e) => {
     e.stopPropagation();
-    const name = prompt("Rename class notebook:", nb.name);
-    if (!name || name.trim() === nb.name) return;
-    try {
-      await api.renameNotebook(nb.id, name.trim());
-      await refresh();
-    } catch (err) {
-      setError(err.message);
-    }
+    setModal({ mode: "edit", nb });
   };
 
   return (
@@ -78,13 +73,14 @@ export default function App() {
             </div>
           ))}
         </nav>
-        <form className="new-nb" onSubmit={createNotebook}>
+        <form className="new-nb" onSubmit={(e) => { e.preventDefault(); setModal({ mode: "create" }); }}>
           <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            value=""
             placeholder="New class notebook…"
+            onFocus={() => setModal({ mode: "create" })}
+            readOnly
           />
-          <button type="submit" disabled={!newName.trim()}>＋</button>
+          <button type="submit">＋</button>
         </form>
         <div className="sidebar-foot">100% local · nothing leaves this Mac</div>
       </aside>
@@ -99,6 +95,7 @@ export default function App() {
             notebookId={currentId}
             notebooks={notebooks}
             onStudy={(title, cards) => setStudy({ title, cards })}
+            onEditFocus={(nb) => setModal({ mode: "edit", nb })}
           />
         ) : (
           <div className="empty">
@@ -106,6 +103,13 @@ export default function App() {
             <p>Create a notebook for each class, then drop in your lecture recordings.</p>
             <p className="hint">Noise gets cleaned (ffmpeg) → transcribed locally (MLX Whisper) → turned into flashcards (Ollama).</p>
           </div>
+        )}
+        {modal && (
+          <NotebookModal
+            initial={modal.mode === "edit" ? modal.nb : null}
+            onSave={saveNotebook}
+            onClose={() => setModal(null)}
+          />
         )}
       </main>
     </div>

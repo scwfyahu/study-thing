@@ -9,11 +9,11 @@ async function j(res) {
 export const api = {
   health: () => fetch("/api/health").then(j),
   notebooks: () => fetch("/api/notebooks").then(j),
-  createNotebook: (name) =>
+  createNotebook: (name, topics) =>
     fetch("/api/notebooks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, topics: topics || "" }),
     }).then(j),
   deleteNotebook: (id) => fetch(`/api/notebooks/${id}`, { method: "DELETE" }).then(j),
   renameNotebook: (id, name) =>

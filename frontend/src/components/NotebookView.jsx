@@ -18,7 +18,7 @@ function fmtDur(s) {
   return `${Math.floor(m / 60) ? `${Math.floor(m / 60)}h ` : ""}${m % 60}m`;
 }
 
-export default function NotebookView({ notebookId, notebooks, onStudy }) {
+export default function NotebookView({ notebookId, notebooks, onStudy, onEditFocus }) {
   const [nb, setNb] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -61,14 +61,8 @@ export default function NotebookView({ notebookId, notebooks, onStudy }) {
     onStudy(nb.name, cards.map((c) => ({ q: c.question, a: c.answer })));
   };
 
-  const editTopics = async () => {
-    const t = prompt(
-      "Syllabus topics this notebook should focus on (one per line or comma-separated).\nLeave empty to allow all content:",
-      nb.topics || ""
-    );
-    if (t === null) return;
-    await api.setTopics(notebookId, t.trim());
-    load();
+  const editTopics = () => {
+    onEditFocus(nb);
   };
 
   if (!nb) return <div className="loading">Loading…</div>;

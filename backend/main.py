@@ -72,12 +72,13 @@ def create_notebook(body: dict):
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(422, "name is required")
+    topics = (body.get("topics") or "").strip() or None
     with db.get_conn() as conn:
         try:
-            cur = conn.execute("INSERT INTO notebooks(name) VALUES (?)", (name,))
+            cur = conn.execute("INSERT INTO notebooks(name, topics) VALUES (?,?)", (name, topics))
         except sqlite3.IntegrityError:
             raise HTTPException(409, "a notebook with that name already exists")
-        return {"id": cur.lastrowid, "name": name}
+        return {"id": cur.lastrowid, "name": name, "topics": topics}
 
 
 @app.patch("/api/notebooks/{nb_id}")
