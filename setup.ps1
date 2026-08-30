@@ -25,13 +25,34 @@ Ensure-Winget "Ollama.Ollama" "ollama"
 Ensure-Winget "OpenJS.NodeJS.LTS" "node"
 Write-Host "    (if ffmpeg/ollama not found after install: open a NEW terminal and re-run this script)"
 
-Write-Host "==> 3/5 ollama daemon"
+Write-Host "==> 3/5 GPU detection + ASR backend"
+$gpus = ((Get-CimInstance Win32_VideoController).Name -join "; ")
+Write-Host "    GPUs: $gpus"
+if ($gpus -match "NVIDIA") {
+  Write-Host "    NVIDIA found -> faster-whisper with CUDA (automatic)"
+} else {
+  Write-Host "    no NVIDIA -> installing whisper.cpp (Vulkan) for AMD/Intel GPU acceleration"
+  $wcDir = "data\whispercpp"
+  New-Item -ItemType Directory -Force -Path $wcDir | Out-Null
+  if (-not (Test-Path "$wcDir\ggml-large-v3-turbo-q5_0.bin")) {
+    Write-Host "    downloading ggml-large-v3-turbo-q5_0 (~550 MB, one time)"
+    Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin" -OutFile "$wcDir\ggml-large-v3-turbo-q5_0.bin"
+  }
+  if (-not (Get-ChildItem -Recurse -Filter "whisper-cli.exe" $wcDir -ErrorAction SilentlyContinue)) {
+    Write-Host "    downloading whisper.cpp Vulkan build"
+    Invoke-WebRequest "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip" -OutFile "$wcDir\wc.zip"
+    Expand-Archive -Force "$wcDir\wc.zip" $wcDir
+    Remove-Item "$wcDir\wc.zip"
+  }
+  if (-not (Test-Path ".env")) { Set-Content ".env" "STUDY_ASR_BACKEND=whisper.cpp" }
+  Write-Host "    wrote .env (STUDY_ASR_BACKEND=whisper.cpp)"
+}
+
+Write-Host "==> 4/5 pulling qwen3:8b (~5 GB, one time)"
 try { ollama list *> $null } catch {
   Start-Process -FilePath "$env:LOCALAPPDATA\Programs\Ollama\ollama app.exe" -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 5
 }
-
-Write-Host "==> 4/5 pulling qwen3:8b (~5 GB, one time)"
 $have = (ollama list | Select-String "qwen3:8b") -ne $null
 if (-not $have) { ollama pull qwen3:8b }
 
@@ -44,5 +65,5 @@ Write-Host ""
 Write-Host "Setup complete. Start the app:"
 Write-Host "  .\run-dev.ps1          # backend :8765 + Vite :5173"
 Write-Host ""
-Write-Host "First transcription downloads the Whisper model (~1.5 GB, one time)."
-Write-Host "GPU (NVIDIA CUDA) is used automatically if present; otherwise CPU (slower)."
+Write-Host "First transcription downloads the Whisper model (one time)."
+Write-Host "GPU: NVIDIA -> CUDA via faster-whisper; AMD/Intel -> Vulkan via whisper.cpp; none -> CPU."

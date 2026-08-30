@@ -12,7 +12,16 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import db, pipeline
-from .config import ASR_BACKEND, AUDIO_DIR, OLLAMA_MODEL, OLLAMA_URL, ROOT, WHISPER_MODEL
+from .config import (
+    ASR_BACKEND,
+    AUDIO_DIR,
+    OLLAMA_MODEL,
+    OLLAMA_URL,
+    ROOT,
+    WHISPERCPP_BIN,
+    WHISPERCPP_MODEL,
+    WHISPER_MODEL,
+)
 from .exporters import cards_to_apkg, cards_to_csv
 
 ALLOWED_EXT = {
@@ -297,11 +306,20 @@ def health():
     except Exception:
         pass
     asr_mod = "mlx_whisper" if ASR_BACKEND == "mlx" else "faster_whisper"
+    asr_installed = importlib.util.find_spec(asr_mod) is not None
+    if ASR_BACKEND == "whisper.cpp":
+        import shutil
+        from pathlib import Path
+
+        from .config import WHISPERCPP_MODEL
+        asr_installed = bool(
+            WHISPERCPP_BIN or shutil.which("whisper-cli")
+        ) and Path(WHISPERCPP_MODEL).exists()
     return {
         "ok": True,
         "asr_backend": ASR_BACKEND,
-        "whisper_model": WHISPER_MODEL,
-        "whisper_installed": importlib.util.find_spec(asr_mod) is not None,
+        "whisper_model": WHISPER_MODEL if ASR_BACKEND != "whisper.cpp" else str(WHISPERCPP_MODEL),
+        "whisper_installed": asr_installed,
         "ollama_model": OLLAMA_MODEL,
         "ollama_running": ollama_up,
     }

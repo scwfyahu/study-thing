@@ -21,6 +21,8 @@ def transcribe(path, model: str = WHISPER_MODEL, language: str = WHISPER_LANGUAG
         model = "large-v3-turbo"
     if ASR_BACKEND == "mlx":
         return _mlx(path, model, language)
+    if ASR_BACKEND == "whisper.cpp":
+        return _whisper_cpp(path, model, language)
     return _faster_whisper(path, model, language)
 
 
@@ -56,4 +58,38 @@ def _faster_whisper(path, model, language) -> dict:
         kwargs["language"] = language
     segments, _info = m.transcribe(str(path), **kwargs)
     text = " ".join(s.text.strip() for s in segments).strip()
+    return {"text": text, "segments": []}
+
+
+def _whisper_cpp(path, model, language) -> dict:
+    """Local whisper.cpp (Vulkan) — the AMD/Intel GPU path on Windows."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    from .config import WHISPERCPP_BIN, WHISPERCPP_MODEL
+
+    bin_path = WHISPERCPP_BIN or shutil.which("whisper-cli")
+    if not bin_path:
+        default_dir = Path(__file__).resolve().parent.parent / "data" / "whispercpp"
+        cand = sorted(default_dir.glob("**/whisper-cli.exe")) if (default_dir := default_dir).exists() else []
+        bin_path = cand[0] if cand else None
+    if not bin_path:
+        raise RuntimeError(
+            "whisper.cpp backend selected but whisper-cli not found. "
+            "Run setup.ps1 (downloads the Vulkan build) or set STUDY_WHISPERCPP_BIN."
+        )
+    model_path = Path(WHISPERCPP_MODEL)
+    if not model_path.exists():
+        raise RuntimeError(
+            f"whisper.cpp model not found at {model_path}. "
+            "Run setup.ps1 (downloads ggml-large-v3-turbo-q5_1) or set STUDY_WHISPERCPP_MODEL."
+        )
+    cmd = [str(bin_path), "-m", str(model_path), "-f", str(path), "-nt", "-np"]
+    if language and language.lower() != "auto":
+        cmd += ["-l", language]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=14400)
+    if p.returncode != 0:
+        raise RuntimeError(f"whisper-cli failed: {p.stderr[-500:]}")
+    text = " ".join(p.stdout.split()).strip()
     return {"text": text, "segments": []}

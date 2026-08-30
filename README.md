@@ -16,7 +16,7 @@ recording → ffmpeg (denoise + loudnorm, 16 kHz mono)
 ## Requirements
 
 - **macOS** (Apple Silicon M1+): MLX Whisper GPU transcription (~15x realtime), 16 GB RAM is enough
-- **Windows 10/11**: faster-whisper (CPU int8, NVIDIA CUDA used automatically if present) — slower than Mac, same features
+- **Windows 10/11**: NVIDIA GPU → faster-whisper (CUDA, automatic) · **AMD/Intel GPU → whisper.cpp Vulkan** (auto-installed by setup.ps1) · no GPU → CPU int8
 - macOS: [Homebrew](https://brew.sh) · Windows: [winget](https://learn.microsoft.com/windows/package-manager/) + Python 3.11+
 
 ## Setup
@@ -35,7 +35,7 @@ recording → ffmpeg (denoise + loudnorm, 16 kHz mono)
 .\run-dev.ps1  # open http://localhost:5173
 ```
 
-If winget-installed tools aren't found, open a NEW terminal and re-run. Windows uses CPU int8 by default; an NVIDIA GPU (CUDA) is picked up automatically.
+If winget-installed tools aren't found, open a NEW terminal and re-run. GPU routing: NVIDIA → CUDA (faster-whisper); AMD/Intel → Vulkan (whisper.cpp, downloaded by setup.ps1, ~550 MB model); none → CPU int8.
 
 ## Usage
 
@@ -51,8 +51,9 @@ If winget-installed tools aren't found, open a NEW terminal and re-run. Windows 
 
 | Variable | Default | Notes |
 |---|---|---|
-| `STUDY_ASR_BACKEND` | `mlx` on Apple Silicon, `faster-whisper` elsewhere | Force the other with `mlx` / `faster-whisper`. |
+| `STUDY_ASR_BACKEND` | `mlx` on Apple Silicon, `faster-whisper` elsewhere | Options: `mlx` / `faster-whisper` / `whisper.cpp` (AMD/Intel GPUs via Vulkan). setup.ps1 writes `.env` for AMD machines. |
 | `STUDY_WHISPER_MODEL` | `large-v3-turbo` (per backend) | MLX: any `mlx-community/*` repo. faster-whisper: `large-v3-turbo`, `small`, `medium`… First run downloads the model. |
+| `STUDY_WHISPERCPP_BIN` / `STUDY_WHISPERCPP_MODEL` | auto-found / `data/models/ggml-large-v3-turbo-q5_0.bin` | whisper.cpp backend paths (AMD/Intel). |
 | `STUDY_WHISPER_LANGUAGE` | `en` | Set `auto` for auto-detect. |
 | `STUDY_OLLAMA_MODEL` | `qwen3:8b` | Any Ollama model. Smaller: `qwen3:4b`, `llama3.1:8b`. |
 | `STUDY_CHUNK_SECONDS` | `600` | Transcription/extraction chunk length. |

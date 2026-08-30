@@ -6,13 +6,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# ASR backend: MLX on Apple Silicon, faster-whisper elsewhere (Windows/Linux/Intel Mac)
+# Optional .env loader (KEY=VALUE lines; real env wins)
+_env_file = ROOT / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
+
+# ASR backend: MLX on Apple Silicon; faster-whisper (CUDA) or whisper.cpp (AMD/Intel Vulkan) on Windows
 ASR_BACKEND = os.environ.get("STUDY_ASR_BACKEND") or (
     "mlx" if sys.platform == "darwin" and platform.machine() == "arm64" else "faster-whisper"
 )
 _ASR_DEFAULT_MODEL = {
     "mlx": "mlx-community/whisper-large-v3-turbo",
     "faster-whisper": "large-v3-turbo",
+    "whisper.cpp": "ggml-large-v3-turbo-q5_0",
 }
 
 DATA_DIR = Path(os.environ.get("STUDY_DATA_DIR", ROOT / "data"))
@@ -26,6 +36,12 @@ RNNOISE_MODEL = Path(os.environ.get("STUDY_RNNOISE", DATA_DIR / "rnnoise.rnn"))
 # ASR model per backend (env override wins; mlx-community names are auto-swapped off-MLX)
 WHISPER_MODEL = os.environ.get("STUDY_WHISPER_MODEL", _ASR_DEFAULT_MODEL[ASR_BACKEND])
 WHISPER_LANGUAGE = os.environ.get("STUDY_WHISPER_LANGUAGE", "en")  # "auto" to detect
+
+# whisper.cpp backend (AMD/Intel GPU via Vulkan on Windows)
+WHISPERCPP_BIN = os.environ.get("STUDY_WHISPERCPP_BIN", "")  # default: PATH or data/whispercpp/
+WHISPERCPP_MODEL = os.environ.get(
+    "STUDY_WHISPERCPP_MODEL", DATA_DIR / "models" / "ggml-large-v3-turbo-q5_0.bin"
+)
 
 # Flashcard LLM (local via Ollama)
 OLLAMA_URL = os.environ.get("STUDY_OLLAMA_URL", "http://localhost:11434")
