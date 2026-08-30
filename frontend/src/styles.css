@@ -52,6 +52,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
   background: var(--bg3); color: var(--muted); border: 1px solid var(--line);
   border-radius: 6px; padding: 3px 5px; font-size: 11.5px; max-width: 130px;
 }
+.topics-line {
+  font-size: 12.5px; color: var(--muted); margin-top: 4px; max-width: 520px;
+  white-space: pre-line;
+}
 .new-nb { display: flex; gap: 6px; margin-top: 10px; }
 .new-nb input {
   flex: 1; background: var(--bg3); color: var(--text);

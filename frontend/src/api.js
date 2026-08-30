@@ -22,6 +22,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     }).then(j),
+  setTopics: (id, topics) =>
+    fetch(`/api/notebooks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topics }),
+    }).then(j),
   moveRecording: (id, notebookId) =>
     fetch(`/api/recordings/${id}`, {
       method: "PATCH",

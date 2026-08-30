@@ -73,16 +73,24 @@ def create_notebook(body: dict):
 
 @app.patch("/api/notebooks/{nb_id}")
 def rename_notebook(nb_id: int, body: dict):
-    name = (body.get("name") or "").strip()
-    if not name:
-        raise HTTPException(422, "name is required")
+    fields = {}
+    if "name" in body:
+        name = (body.get("name") or "").strip()
+        if not name:
+            raise HTTPException(422, "name is required")
+        fields["name"] = name
+    if "topics" in body:
+        fields["topics"] = (body.get("topics") or "").strip() or None
+    if not fields:
+        raise HTTPException(422, "nothing to update")
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
         try:
-            conn.execute("UPDATE notebooks SET name=? WHERE id=?", (name, nb_id))
+            sets = ", ".join(f"{k}=?" for k in fields)
+            conn.execute(f"UPDATE notebooks SET {sets} WHERE id=?", (*fields.values(), nb_id))
         except sqlite3.IntegrityError:
             raise HTTPException(409, "a notebook with that name already exists")
-    return {"id": nb_id, "name": name}
+    return {"id": nb_id, **fields}
 
 
 @app.patch("/api/recordings/{rec_id}")
@@ -101,7 +109,7 @@ def update_recording(rec_id: int, body: dict):
 @app.get("/api/notebooks/{nb_id}")
 def get_notebook(nb_id: int):
     with db.get_conn() as conn:
-        nb = conn.execute("SELECT id, name, created_at FROM notebooks WHERE id=?", (nb_id,)).fetchone()
+        nb = conn.execute("SELECT id, name, created_at, topics FROM notebooks WHERE id=?", (nb_id,)).fetchone()
         if nb is None:
             raise HTTPException(404, "notebook not found")
         recs = conn.execute(

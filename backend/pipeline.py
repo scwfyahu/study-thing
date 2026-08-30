@@ -126,9 +126,18 @@ def _parse_cards_json(content: str) -> list:
     return cards if isinstance(cards, list) else []
 
 
-def extract_cards(text: str, notebook_name: str, chunk_idx: int, total: int) -> list:
+def extract_cards(text: str, notebook_name: str, chunk_idx: int, total: int, topics: str | None = None) -> list:
+    focus = ""
+    if topics and topics.strip():
+        focus = (
+            "The course covers ONLY these syllabus topics:\n"
+            f"{topics.strip()}\n"
+            "Create flashcards ONLY about these topics. Skip personal anecdotes, classroom "
+            "logistics, and any content that does not map to a listed topic.\n\n"
+        )
     user_msg = (
         f"Class: {notebook_name}\n"
+        f"{focus}"
         f"This is part {chunk_idx + 1} of {total} of one lecture recording.\n\n"
         f"Transcript chunk:\n{text}"
     )
@@ -196,7 +205,7 @@ def process_recording(recording_id: int) -> None:
     with _pipeline_lock:
         with db.get_conn() as conn:
             rec = conn.execute(
-                "SELECT r.*, n.name AS notebook_name FROM recordings r "
+                "SELECT r.*, n.name AS notebook_name, n.topics AS topics FROM recordings r "
                 "JOIN notebooks n ON n.id = r.notebook_id WHERE r.id=?",
                 (recording_id,),
             ).fetchone()
@@ -232,7 +241,7 @@ def process_recording(recording_id: int) -> None:
             total_cards = 0
             for k, (i, text) in enumerate(meaningful):
                 _set(recording_id, status="extracting", progress=0.60 + 0.38 * (k / max(len(meaningful), 1)))
-                raw = extract_cards(text, rec["notebook_name"], i, n)
+                raw = extract_cards(text, rec["notebook_name"], i, n, rec["topics"])
                 for q, a in clean_cards(raw, seen):
                     with db.get_conn() as conn:
                         conn.execute(

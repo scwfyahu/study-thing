@@ -61,13 +61,27 @@ export default function NotebookView({ notebookId, notebooks, onStudy }) {
     onStudy(nb.name, cards.map((c) => ({ q: c.question, a: c.answer })));
   };
 
+  const editTopics = async () => {
+    const t = prompt(
+      "Syllabus topics this notebook should focus on (one per line or comma-separated).\nLeave empty to allow all content:",
+      nb.topics || ""
+    );
+    if (t === null) return;
+    await api.setTopics(notebookId, t.trim());
+    load();
+  };
+
   if (!nb) return <div className="loading">Loading…</div>;
 
   return (
     <div className="notebook">
       <header className="nb-head">
-        <h2>{nb.name}</h2>
+        <div>
+          <h2>{nb.name}</h2>
+          {nb.topics && <div className="topics-line">Focus: {nb.topics}</div>}
+        </div>
         <div className="nb-actions">
+          <button className="btn" onClick={() => editTopics()}>Focus</button>
           <button className="primary" onClick={startStudy}>▶ Study all</button>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=apkg`}>Export Anki</a>
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=csv`}>Export CSV</a>
