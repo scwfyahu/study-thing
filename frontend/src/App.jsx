@@ -6,6 +6,7 @@ import ScheduleView from "./components/ScheduleView.jsx";
 import SharePanel from "./components/SharePanel.jsx";
 import StudyView from "./components/StudyView.jsx";
 import SuggestView from "./components/SuggestView.jsx";
+import { askConfirm } from "./confirm.js";
 
 export default function App() {
   const [notebooks, setNotebooks] = useState([]);
@@ -63,7 +64,7 @@ export default function App() {
 
   const deleteNotebook = async (nb, e) => {
     e.stopPropagation();
-    if (!confirm(`Delete notebook "${nb.name}" and all its recordings + flashcards?`)) return;
+    if (!(await askConfirm(`Delete notebook "${nb.name}" and all its recordings + flashcards?`))) return;
     await api.deleteNotebook(nb.id);
     if (currentId === nb.id) setCurrentId(null);
     refresh();

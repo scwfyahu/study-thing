@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { askConfirm } from "../confirm.js";
 
 const BUSY = new Set(["queued", "denoising", "splitting", "transcribing", "reading", "classifying"]);
 
@@ -59,7 +60,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
   };
 
   const del = async (id, name) => {
-    if (!confirm(`Delete "${name}" and its transcript?`)) return;
+    if (!(await askConfirm(`Delete "${name}" and its transcript?`))) return;
     try { await api.deleteRecording(id); } catch {}
     load();
   };

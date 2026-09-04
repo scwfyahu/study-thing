@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import Outline from "./Outline.jsx";
 import QuizModal from "./QuizModal.jsx";
 import QuizView from "./QuizView.jsx";
+import { askConfirm } from "../confirm.js";
 
 const STATUS_LABEL = {
   queued: "Queued",
@@ -143,7 +144,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   };
 
   const delRev = async (id) => {
-    if (!confirm("Delete this reviewer?")) return;
+    if (!(await askConfirm("Delete this reviewer?"))) return;
     await api.deleteReviewer(id);
     setOpenRev(null);
     load();
@@ -186,7 +187,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   };
 
   const delQuiz = async (id) => {
-    if (!confirm("Delete this quiz?")) return;
+    if (!(await askConfirm("Delete this quiz?"))) return;
     await api.deleteQuiz(id);
     load();
   };
@@ -417,7 +418,7 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
   };
 
   const del = async () => {
-    if (!confirm(`Delete deck "${dk.title}" and its ${dk.card_count} flashcards?`)) return;
+    if (!(await askConfirm(`Delete deck "${dk.title}" and its ${dk.card_count} flashcards?`))) return;
     await api.deleteDeck(dk.id);
     onChanged();
   };
@@ -475,7 +476,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
   const active = ACTIVE.has(r.status);
 
   const del = async () => {
-    if (!confirm(`Delete "${r.original_name}" and its flashcards?`)) return;
+    if (!(await askConfirm(`Delete "${r.original_name}" and its flashcards?`))) return;
     await api.deleteRecording(r.id);
     onChanged();
   };
@@ -487,7 +488,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
   };
 
   const reprocess = async () => {
-    if (!confirm("Re-run transcription + flashcard generation for this recording? (existing cards are rebuilt)")) return;
+    if (!(await askConfirm("Re-run transcription + flashcard generation for this recording? (existing cards are rebuilt)"))) return;
     await api.reprocess(r.id);
     onChanged();
   };
