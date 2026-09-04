@@ -98,13 +98,38 @@ def list_notebooks():
     return [dict(r) for r in rows]
 
 
+def _auto_extract_topics(nb_id: int, syllabus_text: str) -> None:
+    """Background task: fill Focus topics from a syllabus. Never blocks the
+    create route (extract_topics hits the LLM). Bounded retries so a flaky
+    LLM can't hold a worker thread forever."""
+    import os
+
+    prior = os.environ.get("STUDY_LLM_RETRIES")
+    os.environ["STUDY_LLM_RETRIES"] = "1"
+    try:
+        topics = syllabus.extract_topics(syllabus_text)
+    except Exception:
+        return
+    finally:
+        if prior is None:
+            os.environ.pop("STUDY_LLM_RETRIES", None)
+        else:
+            os.environ["STUDY_LLM_RETRIES"] = prior
+    if topics:
+        with db.get_conn() as conn:
+            conn.execute("UPDATE notebooks SET topics=? WHERE id=?",
+                         ("\n".join(topics), nb_id))
+
+
 @app.post("/api/notebooks", status_code=201)
-def create_notebook(body: dict):
+def create_notebook(body: dict, background_tasks: BackgroundTasks):
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(422, "name is required")
     topics = (body.get("topics") or "").strip() or None
     syllabus = (body.get("syllabus") or "").strip() or None
+    # Auto-generate Focus topics from the syllabus without blocking: the create
+    # route returns instantly; extraction runs in a background task.
     with db.get_conn() as conn:
         try:
             cur = conn.execute(
@@ -112,7 +137,10 @@ def create_notebook(body: dict):
             )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "a notebook with that name already exists")
-        return {"id": cur.lastrowid, "name": name, "topics": topics}
+        nb_id = cur.lastrowid
+    if syllabus and not topics:
+        background_tasks.add_task(_auto_extract_topics, nb_id, syllabus)
+    return {"id": nb_id, "name": name, "topics": topics}
 
 
 @app.post("/api/notebooks/parse-syllabus")

@@ -45,10 +45,13 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
     load();
   };
 
-  const createAndAssign = async (id, fallbackName) => {
+  const createAndAssign = async (id, fallbackName, suggestionTopics) => {
     const name = (newName.trim() || fallbackName || "Untitled class").trim();
     try {
-      const nb = await api.createNotebook(name, "");
+      // Seed Focus topics from the auto-classified topics so the new class is
+      // immediately usable for classification + deck scope-guessing.
+      const topics = (suggestionTopics || []).join("\n");
+      const nb = await api.createNotebook(name, topics);
       await assign(id, nb.id);
       setNewFor(null); setNewName("");
     } catch (e) { alert(e.message); }
@@ -107,7 +110,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
           <EscrowRow key={r.id} r={r} notebooks={notebooks}
             onAssign={assign} onCreateStart={() => { setNewFor(r.id); setNewName(r.suggestion?.name || ""); }}
             creating={newFor === r.id} newName={newName} setNewName={setNewName}
-            onCreateGo={() => createAndAssign(r.id, r.suggestion?.name || stripExt(r.original_name))}
+            onCreateGo={() => createAndAssign(r.id, r.suggestion?.name || stripExt(r.original_name), r.suggestion?.topics)}
             onCreateCancel={() => { setNewFor(null); setNewName(""); }}
             onReclassify={reclassify} onDelete={del} />
         ))}
