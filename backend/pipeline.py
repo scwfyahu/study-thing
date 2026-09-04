@@ -126,10 +126,10 @@ def split_chunks(wav, work_dir) -> list:
     return sorted(work_dir.glob("chunk_*.wav"))
 
 
-def _transcribe_chunk(path) -> tuple[str, list]:
+def _transcribe_chunk(path, progress_cb=None) -> tuple[str, list]:
     from .transcriber import transcribe  # lazy: mlx import is slow + may be absent
 
-    result = transcribe(path)
+    result = transcribe(path, progress_cb=progress_cb)
     return (result.get("text") or "").strip(), result.get("segments") or []
 
 
@@ -363,8 +363,16 @@ def process_recording(recording_id: int) -> None:
             wav, duration = prepare_audio(rec["stored_path"], work_dir)
             _set(recording_id, duration_sec=duration, status="transcribing",
                  progress=0.1)
-            text, segments = _transcribe_chunk(wav)  # whole recording, one pass
-            _set(recording_id, duration_sec=duration, progress=0.15)
+            def _prog(done, total):
+                if total:
+                    _set(recording_id, progress=round(0.1 + 0.8 * (done / max(total, 1)), 3),
+                         note=f"Transcribing… ({done}/{total})")
+                else:
+                    _set(recording_id, progress=round(0.1 + 0.8 * min(done * 0.01, 1), 3),
+                         note=f"Transcribing… ({done} segments)")
+            text, segments = _transcribe_chunk(wav, _prog)  # whole recording, one pass
+            _set(recording_id, duration_sec=duration, progress=0.9,
+                 note="Finalizing transcript…")
             text = store_transcript(recording_id, segments)  # timestamped segments
 
             if not _meaningful(text):

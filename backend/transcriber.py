@@ -13,22 +13,27 @@ from .config import WHISPER_LANGUAGE, WHISPER_MODEL
 _fw_model_cache = {}
 
 
-def transcribe(path, model: str = WHISPER_MODEL, language: str = WHISPER_LANGUAGE) -> dict:
+def transcribe(path, model: str = WHISPER_MODEL, language: str = WHISPER_LANGUAGE,
+                progress_cb=None) -> dict:
     from .config import ASR_BACKEND
 
     # Guard: mlx-community model names only exist on the MLX backend
     if ASR_BACKEND != "mlx" and "mlx-community" in model:
         model = "large-v3-turbo"
     if ASR_BACKEND == "mlx":
-        return _mlx(path, model, language)
+        return _mlx(path, model, language, progress_cb)
     if ASR_BACKEND == "whisper.cpp":
         return _whisper_cpp(path, model, language)
-    return _faster_whisper(path, model, language)
+    return _faster_whisper(path, model, language, progress_cb)
+
+_CHUNK_SEC = 600  # transcribe window: long enough to avoid boundary drift, small
+                 # enough to report live progress. Model stays cached (ModelHolder).
 
 
-def _mlx(path, model, language) -> dict:
+def _mlx(path, model, language, progress_cb=None) -> dict:
     try:
         import mlx_whisper
+        from mlx_whisper.audio import load_audio
     except ImportError as e:
         raise RuntimeError(
             "mlx-whisper is not installed (macOS Apple Silicon only). "
@@ -38,16 +43,35 @@ def _mlx(path, model, language) -> dict:
     kwargs = {"path_or_hf_repo": model}
     if language and language.lower() != "auto":
         kwargs["language"] = language
-    res = mlx_whisper.transcribe(str(path), **kwargs)
-    segs = [
-        {"start": float(s.get("start", 0)), "end": float(s.get("end", 0)),
-         "text": (s.get("text") or "").strip()}
-        for s in (res.get("segments") or []) if isinstance(s, dict)
-    ]
-    return {"text": (res.get("text") or "").strip(), "segments": segs}
+
+    audio = load_audio(str(path))  # 16k mono float32
+    sr = 16000
+    nwin = max(1, -(-len(audio) // (_CHUNK_SEC * sr)))
+    segs = []
+    for i in range(nwin):
+        piece = audio[i * _CHUNK_SEC * sr : (i + 1) * _CHUNK_SEC * sr]
+        if piece.size < sr:  # <1s tail — skip
+            continue
+        res = mlx_whisper.transcribe(piece, **kwargs)
+        off = i * _CHUNK_SEC
+        for s in (res.get("segments") or []):
+            if not isinstance(s, dict):
+                continue
+            t = (s.get("text") or "").strip()
+            if not t:
+                continue
+            segs.append({"start": float(s.get("start", 0)) + off,
+                          "end": float(s.get("end", 0)) + off, "text": t})
+        if progress_cb:
+            try:
+                progress_cb(i + 1, nwin)
+            except Exception:
+                pass
+    text = " ".join(x["text"] for x in segs).strip()
+    return {"text": text, "segments": segs}
 
 
-def _faster_whisper(path, model, language) -> dict:
+def _faster_whisper(path, model, language, progress_cb=None) -> dict:
     try:
         from faster_whisper import WhisperModel
     except ImportError as e:
@@ -68,6 +92,11 @@ def _faster_whisper(path, model, language) -> dict:
         t = (s.text or "").strip()
         if t:
             segs.append({"start": float(s.start), "end": float(s.end), "text": t})
+        if progress_cb:
+            try:
+                progress_cb(len(segs), 0)  # total unknown; report segment count
+            except Exception:
+                pass
     text = " ".join(x["text"] for x in segs).strip()
     return {"text": text, "segments": segs}
 

@@ -155,6 +155,7 @@ function BusyRow({ r }) {
         <span className="rec-name">{r.original_name}</span>
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className={`badge s-${r.status}`}>{label}</span>
+        {r.note && <span className="muted small-note">{r.note}</span>}
         <div className="progress"><div className="bar" style={{ width: `${Math.round((r.progress || 0) * 100)}%` }} /></div>
       </div>
     </div>

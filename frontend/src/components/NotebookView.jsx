@@ -559,7 +559,10 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
         <button className="icon-del" onClick={del} title="Delete recording">✕</button>
       </div>
       {active && (
-        <div className="progress"><div className="bar" style={{ width: `${Math.round(r.progress * 100)}%` }} /></div>
+        <>
+          {r.note && <div className="muted small-note" style={{ marginTop: 4 }}>{r.note}</div>}
+          <div className="progress"><div className="bar" style={{ width: `${Math.round(r.progress * 100)}%` }} /></div>
+        </>
       )}
       {r.status === "error" && <div className="err-text">{r.error}</div>}
     </div>
