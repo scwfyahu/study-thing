@@ -552,6 +552,31 @@ def recording_transcript(rec_id: int):
     return {"chunks": [dict(r) for r in rows], "text": "\n\n".join(r["text"] for r in rows)}
 
 
+@app.get("/api/notebooks/{nb_id}/transcript")
+def notebook_transcript(nb_id: int, q: str | None = None):
+    """All transcripts in a notebook, grouped by recording, timestamped, optional search."""
+    with db.get_conn() as conn:
+        _nb_or_404(conn, nb_id)
+        rows = conn.execute(
+            """SELECT r.id AS rec_id, r.original_name, r.duration_sec, c.start_sec, c.text
+               FROM chunks c JOIN recordings r ON r.id = c.recording_id
+               WHERE r.notebook_id=? ORDER BY r.id, c.idx""",
+            (nb_id,),
+        ).fetchall()
+    q = (q or "").strip().lower()
+    groups: dict[int, dict] = {}
+    for r in rows:
+        g = groups.setdefault(r["rec_id"], {
+            "id": r["rec_id"], "name": r["original_name"],
+            "duration_sec": r["duration_sec"], "chunks": []})
+        text = (r["text"] or "").strip()
+        if q and q not in text.lower():
+            continue  # search filter per-segment
+        g["chunks"].append({"start_sec": r["start_sec"], "text": text})
+    recordings = [g for g in groups.values() if g["chunks"]]
+    return {"recordings": recordings}
+
+
 # ------------------------------------------------------------------ exports
 
 def _fetch_cards_for(conn, where: str, args: tuple):

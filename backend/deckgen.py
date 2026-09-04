@@ -62,7 +62,7 @@ def generate_deck_cards(deck_id: int) -> int:
         ).fetchone()
         scope = json.loads(deck["scope"] or "[]")
         chunks = conn.execute(
-            """SELECT r.id AS recording_id, c.id AS chunk_id, c.text
+            """SELECT r.id AS recording_id, c.idx, c.text
                FROM chunks c JOIN recordings r ON r.id = c.recording_id
                WHERE r.notebook_id=? ORDER BY r.id, c.idx""",
             (deck["notebook_id"],),
@@ -75,22 +75,35 @@ def generate_deck_cards(deck_id: int) -> int:
     conn.commit()
     conn.close()
 
+    # segments are small — join per recording, then split into LLM-sized blocks
+    per_rec: dict[int, list[str]] = {}
+    order: list[int] = []
+    for ch in chunks:
+        per_rec.setdefault(ch["recording_id"], []).append(ch["text"])
+        if ch["recording_id"] not in order:
+            order.append(ch["recording_id"])
+    blocks = []
+    for rec_id in order:
+        full = "\n\n".join(per_rec[rec_id])
+        for b in pipeline.split_text(full, 6000):
+            blocks.append((rec_id, b))
+
     seen: set = set()
     total = 0
-    n = max(len(chunks), 1)
-    for k, ch in enumerate(chunks):
+    n = max(len(blocks), 1)
+    for k, (rec_id, text) in enumerate(blocks):
         try:
             with db.get_conn() as conn:
                 conn.execute(
                     "UPDATE decks SET progress=? WHERE id=?",
                     (0.05 + 0.9 * (k / max(n, 1)), deck_id))
-            raw = pipeline.extract_cards(ch["text"], nb["name"], "\n".join(scope) if scope else None)
+            raw = pipeline.extract_cards(text, nb["name"], "\n".join(scope) if scope else None)
             for q, a, topic in pipeline.clean_cards(raw, seen):
                 with db.get_conn() as conn:
                     conn.execute(
                         "INSERT INTO cards(notebook_id, recording_id, deck_id, question, answer, topic, position) "
                         "SELECT notebook_id, id, ?, ?, ?, ? FROM recordings WHERE id = ?",
-                        (deck_id, q, a, topic, total, ch["recording_id"]),
+                        (deck_id, q, a, topic, total, rec_id),
                     )
                 total += 1
         except Exception:

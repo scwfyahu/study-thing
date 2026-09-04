@@ -96,11 +96,11 @@ def split_chunks(wav, work_dir) -> list:
     return sorted(work_dir.glob("chunk_*.wav"))
 
 
-def _transcribe_chunk(path) -> str:
+def _transcribe_chunk(path) -> tuple[str, list]:
     from .transcriber import transcribe  # lazy: mlx import is slow + may be absent
 
     result = transcribe(path)
-    return (result.get("text") or "").strip()
+    return (result.get("text") or "").strip(), result.get("segments") or []
 
 
 def _ollama_chat(payload: dict) -> dict:
@@ -205,12 +205,46 @@ def _meaningful(text: str, min_words: int = 20) -> bool:
     return sum(1 for w in text.split() if len(w) >= 3) >= min_words
 
 
+def split_text(text: str, size: int = 6000) -> list[str]:
+    """Split long text into word-boundary blocks the LLM can chew per call."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    if len(text) <= size:
+        return [text]
+    out, cur = [], ""
+    for word in text.split():
+        if len(cur) + len(word) + 1 > size and cur:
+            out.append(cur.strip())
+            cur = word
+        else:
+            cur = (cur + " " + word).strip()
+    if cur:
+        out.append(cur.strip())
+    return out
+
+
 def _store_chunk(recording_id: int, text: str, start_sec: float = 0.0) -> None:
     with db.get_conn() as conn:
         conn.execute(
             "INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
             (recording_id, 0, start_sec, text),
         )
+
+
+def store_transcript(recording_id: int, segments: list) -> str:
+    """Persist timestamped segments as chunks. Returns the joined transcript text."""
+    with db.get_conn() as conn:
+        conn.execute("DELETE FROM chunks WHERE recording_id=?", (recording_id,))
+        for i, seg in enumerate(segments):
+            t = (seg.get("text") or "").strip()
+            if not t:
+                continue
+            conn.execute(
+                "INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
+                (recording_id, i, float(seg.get("start") or 0), t),
+            )
+    return "\n\n".join((s.get("text") or "").strip() for s in segments if (s.get("text") or "").strip())
 
 
 def _scan_tests(recording_id: int, notebook_id: int) -> None:
@@ -299,8 +333,9 @@ def process_recording(recording_id: int) -> None:
             wav, duration = prepare_audio(rec["stored_path"], work_dir)
             _set(recording_id, duration_sec=duration, status="transcribing",
                  progress=0.1)
-            text = _transcribe_chunk(wav)  # whole recording, one pass
-            _store_chunk(recording_id, text)
+            text, segments = _transcribe_chunk(wav)  # whole recording, one pass
+            _set(recording_id, duration_sec=duration, progress=0.15)
+            text = store_transcript(recording_id, segments)  # timestamped segments
 
             if not _meaningful(text):
                 _set(recording_id, status="done", progress=1.0,

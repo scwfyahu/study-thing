@@ -4,6 +4,7 @@ import Outline from "./Outline.jsx";
 import QuizModal from "./QuizModal.jsx";
 import QuizView from "./QuizView.jsx";
 import FocusView from "./FocusView.jsx";
+import TranscriptModal from "./TranscriptModal.jsx";
 import { askConfirm } from "../confirm.js";
 
 const STATUS_LABEL = {
@@ -45,7 +46,19 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [scopeModal, setScopeModal] = useState(null); // deck being confirmed
   const [focus, setFocus] = useState([]);
   const [generatingFocus, setGeneratingFocus] = useState(false);
+  const [transcriptModal, setTranscriptModal] = useState(null); // {title, data}
   const fileInput = useRef(null);
+
+  const openNbTranscript = async () => {
+    try { setTranscriptModal({ title: `Transcripts — ${nb.name}`, data: await api.notebookTranscript(notebookId) }); }
+    catch (e) { alert(e.message); }
+  };
+  const openRecTranscript = async (r) => {
+    try {
+      const t = await api.transcript(r.id);
+      setTranscriptModal({ title: `Transcript — ${r.original_name}`, data: { recordings: [{ id: r.id, name: r.original_name, duration_sec: r.duration_sec, chunks: t.chunks }] } });
+    } catch (e) { alert(e.message); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -225,6 +238,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           {nb.topics && <div className="topics-line">Focus: {nb.topics}</div>}
         </div>
         <div className="nb-actions">
+          <button className="btn" onClick={openNbTranscript}>Transcripts</button>
           {nb.has_syllabus && (
             <button className="btn" onClick={autoFocus} disabled={autoFocusing}>
               {autoFocusing ? "Extracting…" : "⟳ Auto-focus"}
@@ -307,7 +321,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           </p>
         )}
         {srcRows.map((r) => (
-          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} notebooks={notebooks} />
+          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} notebooks={notebooks} onTranscript={openRecTranscript} />
         ))}
       </section>
       </section>
@@ -373,6 +387,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
       </section>
 
       {scopeModal && <ScopeModal deck={scopeModal} onClose={() => setScopeModal(null)} />}
+      {transcriptModal && <TranscriptModal title={transcriptModal.title} data={transcriptModal.data} onClose={() => setTranscriptModal(null)} />}
       {quizModal && (
         <QuizModal
           tests={tests}
@@ -493,7 +508,7 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
   );
 }
 
-function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
+function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }) {
   const active = ACTIVE.has(r.status);
 
   const del = async () => {
@@ -524,6 +539,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
         <span className="spacer" />
         {r.status === "done" && (
           <>
+            <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
             <button className="btn small" onClick={reprocess}>↻ Re-process</button>
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=apkg`}>Anki</a>
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=csv`}>CSV</a>

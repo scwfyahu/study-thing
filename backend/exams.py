@@ -38,17 +38,21 @@ def _ollama_json(messages: list[dict]) -> dict:
 
 
 def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
-    """Scan one recording's chunks for assessment announcements. Returns count stored."""
+    """Scan one recording's transcript for assessment announcements. Returns count stored."""
+    from .pipeline import split_text
+
     with db.get_conn() as conn:
         chunks = conn.execute(
             "SELECT idx, text FROM chunks WHERE recording_id=? ORDER BY idx", (recording_id,)
         ).fetchall()
     if not chunks:
         return 0
+    full = "\n\n".join(c["text"] for c in chunks)
+    blocks = split_text(full, 6000)
 
     found = []
-    for c in chunks:
-        if len(c["text"].split()) < 30:
+    for b in blocks:
+        if len(b.split()) < 30:
             continue
         try:
             res = _ollama_json([
@@ -71,7 +75,7 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
                     "'a test' without a named assessment. Only report concrete named assessments. "
                     "Return the schema exactly."
                 )},
-                {"role": "user", "content": f"Transcript chunk {c['idx']}:\n{c['text'][:6000]}"},
+                {"role": "user", "content": f"Transcript block:\n{b}"},
             ])
             for a in res.get("announcements", []):
                 title = str(a.get("title", "")).strip()
@@ -83,7 +87,7 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
                         "scope": [str(s).strip() for s in (a.get("scope") or []) if str(s).strip()],
                     })
         except Exception:
-            continue  # one chunk failing must not kill the scan
+            continue  # one block failing must not kill the scan
 
     # dedupe by title (case-insensitive); a concrete date beats a vague one
     seen = {}

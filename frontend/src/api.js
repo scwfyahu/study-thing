@@ -85,6 +85,10 @@ export const api = {
     }).then(j),
   reclassify: (id) => fetch(`/api/recordings/${id}/reclassify`, { method: "POST" }).then(j),
   transcript: (id) => fetch(`/api/recordings/${id}/transcript`).then(j),
+  notebookTranscript: (nbId, q) => {
+    const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+    return fetch(`/api/notebooks/${nbId}/transcript${qs}`).then(j);
+  },
   reprocess: (id) =>
     fetch(`/api/recordings/${id}/reprocess`, { method: "POST" }).then(j),
   deleteRecording: (id) => fetch(`/api/recordings/${id}`, { method: "DELETE" }).then(j),

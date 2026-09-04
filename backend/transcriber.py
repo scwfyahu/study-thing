@@ -38,7 +38,13 @@ def _mlx(path, model, language) -> dict:
     kwargs = {"path_or_hf_repo": model}
     if language and language.lower() != "auto":
         kwargs["language"] = language
-    return mlx_whisper.transcribe(str(path), **kwargs)
+    res = mlx_whisper.transcribe(str(path), **kwargs)
+    segs = [
+        {"start": float(s.get("start", 0)), "end": float(s.get("end", 0)),
+         "text": (s.get("text") or "").strip()}
+        for s in (res.get("segments") or []) if isinstance(s, dict)
+    ]
+    return {"text": (res.get("text") or "").strip(), "segments": segs}
 
 
 def _faster_whisper(path, model, language) -> dict:
@@ -57,9 +63,13 @@ def _faster_whisper(path, model, language) -> dict:
     if language and language.lower() != "auto":
         kwargs["language"] = language
     segments, _info = m.transcribe(str(path), **kwargs)
-    text = " ".join(s.text.strip() for s in segments).strip()
-    return {"text": text, "segments": []}
-
+    segs = []
+    for s in segments:
+        t = (s.text or "").strip()
+        if t:
+            segs.append({"start": float(s.start), "end": float(s.end), "text": t})
+    text = " ".join(x["text"] for x in segs).strip()
+    return {"text": text, "segments": segs}
 
 def _whisper_cpp(path, model, language) -> dict:
     """Local whisper.cpp (Vulkan) — the AMD/Intel GPU path on Windows."""
@@ -92,4 +102,5 @@ def _whisper_cpp(path, model, language) -> dict:
     if p.returncode != 0:
         raise RuntimeError(f"whisper-cli failed: {p.stderr[-500:]}")
     text = " ".join(p.stdout.split()).strip()
-    return {"text": text, "segments": []}
+    # whisper.cpp text mode has no per-segment timestamps; store as one segment
+    return {"text": text, "segments": [{"start": 0, "end": 0, "text": text}] if text else []}
