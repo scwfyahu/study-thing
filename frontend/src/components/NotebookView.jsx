@@ -270,6 +270,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         ))}
       </section>
 
+      <section className="rev-section recordings-panel">
       <div
         className={"dropzone" + (dragging ? " over" : "") + (busy ? " busy" : "")}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -308,6 +309,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         {srcRows.map((r) => (
           <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} notebooks={notebooks} />
         ))}
+      </section>
       </section>
 
       <section className="rev-section">
