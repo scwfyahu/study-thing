@@ -48,8 +48,10 @@ def status() -> dict:
     last = None
     try:
         if provider() == "openrouter":
+            # num_predict must be comfortably above the model's minimum or the
+            # ping 400s (e.g. some models reject max_tokens=4) -> false "down".
             _openrouter_chat([{"role": "user", "content": "ping"}],
-                             None, 0.0, 4, 20)
+                             None, 0.0, 256, 30)
             available = True
         else:
             import requests
