@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import Outline from "./Outline.jsx";
 import QuizModal from "./QuizModal.jsx";
 import QuizView from "./QuizView.jsx";
+import FocusView from "./FocusView.jsx";
 import { askConfirm } from "../confirm.js";
 
 const STATUS_LABEL = {
@@ -42,18 +43,21 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const [selTopic, setSelTopic] = useState(null);
   const [decks, setDecks] = useState([]);
   const [scopeModal, setScopeModal] = useState(null); // deck being confirmed
+  const [focus, setFocus] = useState([]);
+  const [generatingFocus, setGeneratingFocus] = useState(false);
   const fileInput = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      const [n, rvs, ts, qzs, dks] = await Promise.all([
-        api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId), api.quizzes(notebookId), api.decks(notebookId),
+      const [n, rvs, ts, qzs, dks, fc] = await Promise.all([
+        api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId), api.quizzes(notebookId), api.decks(notebookId), api.focus(notebookId),
       ]);
       setNb(n);
       setReviewers(rvs);
       setTests(ts);
       setQuizzes(qzs);
       setDecks(dks);
+      setFocus(fc.focus || []);
     } catch {
       /* transient */
     }
@@ -105,11 +109,22 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
   const autoFocus = async () => {
     setAutoFocusing(true);
+    setGeneratingFocus(true);
     try {
       await api.autoFocus(notebookId);
+      // generation runs in background; poll to pick it up
+      let tries = 0;
+      const poll = async () => {
+        const fc = await api.focus(notebookId).catch(() => null);
+        if (fc) setFocus(fc.focus || []);
+        if (!fc?.focus?.length && tries++ < 12) setTimeout(poll, 3000);
+        else setGeneratingFocus(false);
+      };
+      poll();
       await load();
     } catch (ex) {
       alert(ex.message);
+      setGeneratingFocus(false);
     }
     setAutoFocusing(false);
   };
@@ -223,6 +238,10 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           <a className="btn" href={`/api/notebooks/${nb.id}/export?format=csv`}>Export CSV</a>
         </div>
       </header>
+
+      <section className="focus-section">
+        <FocusView focus={focus} generating={generatingFocus} onRegenerate={autoFocus} hasSyllabus={nb.has_syllabus} />
+      </section>
 
       <section className="tests-section">
         <div className="rev-bar">

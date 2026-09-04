@@ -402,3 +402,30 @@ h4 { font-size: 15px; }
   animation: procPulse 1.2s ease-in-out infinite;
 }
 @keyframes procPulse { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+
+/* ------------- Focus (detailed syllabus model) ------------- */
+.focus-topic {
+  background: var(--ink3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.focus-topic > summary {
+  list-style: none; cursor: pointer; padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.focus-topic > summary::-webkit-details-marker { display: none; }
+.focus-topic[open] > summary { border-bottom: 1px solid var(--line); }
+.focus-name { font-weight: 600; font-size: 14px; }
+.focus-body { padding: 10px 14px 14px; }
+.focus-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.focus-stars { color: var(--accent); letter-spacing: 1px; font-size: 12px; }
+.focus-stars-dim { color: var(--ink4); }
+.focus-summary { margin: 0 0 8px; font-size: 13px; line-height: 1.5; color: var(--text); }
+.focus-subs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.focus-chip {
+  background: rgba(136,192,208,.12); color: var(--accent);
+  border: 1px solid rgba(136,192,208,.25);
+  font-size: 12px; line-height: 1; padding: 5px 10px; border-radius: 999px;
+}

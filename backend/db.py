@@ -51,6 +51,17 @@ CREATE TABLE IF NOT EXISTS reviewers(
   content TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS focus_topics(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  notebook_id INTEGER NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  name TEXT NOT NULL,
+  summary TEXT,
+  subtopics TEXT NOT NULL DEFAULT '[]',
+  weight INTEGER NOT NULL DEFAULT 3,
+  chapters TEXT,
+  notes TEXT
+);
 CREATE TABLE IF NOT EXISTS tests(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   notebook_id INTEGER NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
@@ -87,6 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_reviewers_notebook ON reviewers(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_tests_notebook ON tests(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_quizzes_notebook ON quizzes(notebook_id);
 CREATE INDEX IF NOT EXISTS idx_decks_notebook ON decks(notebook_id);
+CREATE INDEX IF NOT EXISTS idx_focus_notebook ON focus_topics(notebook_id);
 """
 
 def _migrate(conn) -> None:

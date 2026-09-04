@@ -40,6 +40,7 @@ export const api = {
       body: JSON.stringify(body),
     }).then(j),
   autoFocus: (id) => fetch(`/api/notebooks/${id}/auto-focus`, { method: "POST" }).then(j),
+  focus: (id) => fetch(`/api/notebooks/${id}/focus`).then(j),
   moveRecording: (id, notebookId) =>
     fetch(`/api/recordings/${id}`, {
       method: "PATCH",

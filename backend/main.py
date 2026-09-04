@@ -98,27 +98,15 @@ def list_notebooks():
     return [dict(r) for r in rows]
 
 
-def _auto_extract_topics(nb_id: int, syllabus_text: str) -> None:
-    """Background task: fill Focus topics from a syllabus. Never blocks the
-    create route (extract_topics hits the LLM). Bounded retries so a flaky
-    LLM can't hold a worker thread forever."""
-    import os
+def _auto_focus(nb_id: int, syllabus_text: str) -> None:
+    """Background task: build the detailed Focus from a syllabus. Never blocks
+    the create route (hits the LLM). Bounded retries inside focus.generate."""
+    from . import focus
 
-    prior = os.environ.get("STUDY_LLM_RETRIES")
-    os.environ["STUDY_LLM_RETRIES"] = "1"
     try:
-        topics = syllabus.extract_topics(syllabus_text)
+        focus.generate(nb_id, syllabus_text)
     except Exception:
-        return
-    finally:
-        if prior is None:
-            os.environ.pop("STUDY_LLM_RETRIES", None)
-        else:
-            os.environ["STUDY_LLM_RETRIES"] = prior
-    if topics:
-        with db.get_conn() as conn:
-            conn.execute("UPDATE notebooks SET topics=? WHERE id=?",
-                         ("\n".join(topics), nb_id))
+        pass
 
 
 @app.post("/api/notebooks", status_code=201)
@@ -128,8 +116,8 @@ def create_notebook(body: dict, background_tasks: BackgroundTasks):
         raise HTTPException(422, "name is required")
     topics = (body.get("topics") or "").strip() or None
     syllabus = (body.get("syllabus") or "").strip() or None
-    # Auto-generate Focus topics from the syllabus without blocking: the create
-    # route returns instantly; extraction runs in a background task.
+    # Build detailed Focus from the syllabus without blocking: the create
+    # route returns instantly; generation runs in a background task.
     with db.get_conn() as conn:
         try:
             cur = conn.execute(
@@ -138,8 +126,8 @@ def create_notebook(body: dict, background_tasks: BackgroundTasks):
         except sqlite3.IntegrityError:
             raise HTTPException(409, "a notebook with that name already exists")
         nb_id = cur.lastrowid
-    if syllabus and not topics:
-        background_tasks.add_task(_auto_extract_topics, nb_id, syllabus)
+    if syllabus:
+        background_tasks.add_task(_auto_focus, nb_id, syllabus)
     return {"id": nb_id, "name": name, "topics": topics}
 
 
@@ -768,21 +756,30 @@ def delete_test(tid: int):
 
 # ---------------------------------------------------------------- reviewers
 
-@app.post("/api/notebooks/{nb_id}/auto-focus")
-def auto_focus(nb_id: int):
-    """Regenerate Focus topics from the notebook's stored syllabus."""
+@app.get("/api/notebooks/{nb_id}/focus")
+def get_focus(nb_id: int):
+    from . import focus
+
     with db.get_conn() as conn:
-        nb = conn.execute("SELECT id, name, syllabus FROM notebooks WHERE id=?", (nb_id,)).fetchone()
+        if conn.execute("SELECT 1 FROM notebooks WHERE id=?", (nb_id,)).fetchone() is None:
+            raise HTTPException(404, "notebook not found")
+    return {"focus": focus.get(nb_id)}
+
+
+@app.post("/api/notebooks/{nb_id}/auto-focus")
+def auto_focus(nb_id: int, background_tasks: BackgroundTasks):
+    """Regenerate the detailed Focus from the notebook's stored syllabus."""
+    from . import focus
+
+    with db.get_conn() as conn:
+        nb = conn.execute("SELECT id, name, syllabus FROM notebooks WHERE id=?",
+                          (nb_id,)).fetchone()
         if nb is None:
             raise HTTPException(404, "notebook not found")
     if not (nb["syllabus"] or "").strip():
         raise HTTPException(400, "no syllabus stored for this notebook — upload one in Edit")
-    topics = syllabus.extract_topics(nb["syllabus"])
-    if not topics:
-        raise HTTPException(400, "could not extract topics from syllabus")
-    with db.get_conn() as conn:
-        conn.execute("UPDATE notebooks SET topics=? WHERE id=?", ("\n".join(topics), nb_id))
-    return {"topics": topics}
+    background_tasks.add_task(focus.generate, nb_id, nb["syllabus"])
+    return {"ok": True, "generating": True}
 
 
 @app.get("/api/notebooks/{nb_id}/reviewers")
