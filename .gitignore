@@ -13,3 +13,4 @@ recordings/*
 # user syllabus files
 syllabus/*
 !syllabus/.gitkeep
+.env

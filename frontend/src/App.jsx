@@ -3,12 +3,26 @@ import { api } from "./api.js";
 import NotebookModal from "./components/NotebookModal.jsx";
 import NotebookView from "./components/NotebookView.jsx";
 import ScheduleView from "./components/ScheduleView.jsx";
+import SharePanel from "./components/SharePanel.jsx";
 import StudyView from "./components/StudyView.jsx";
+import SuggestView from "./components/SuggestView.jsx";
 
 export default function App() {
   const [notebooks, setNotebooks] = useState([]);
+  const [proc, setProc] = useState(null);
+  const [inboxN, setInboxN] = useState(0);
+  useEffect(() => {
+    const check = async () => {
+      try { setProc(await fetch("/api/processing").then((r) => r.json())); } catch {}
+      try { setInboxN((await fetch("/api/inbox/count").then((r) => r.json())).count || 0); } catch {}
+    };
+    check();
+    const t = setInterval(check, 5000);
+    return () => clearInterval(t);
+  }, []);
   const [currentId, setCurrentId] = useState(null);
   const [viewSchedule, setViewSchedule] = useState(false);
+  const [viewSuggest, setViewSuggest] = useState(false);
   const [modal, setModal] = useState(null); // {mode:'create'} | {mode:'edit', nb}
   const [study, setStudy] = useState(null); // {title, notebookId}
   const [error, setError] = useState("");
@@ -66,21 +80,28 @@ export default function App() {
         <h1 className="brand">Study<span>Thing</span></h1>
         <nav className="nb-list">
           <div
-            className={"nb-item" + (viewSchedule ? " active" : "")}
-            onClick={() => { setViewSchedule(true); setStudy(null); }}
+            className={"nb-item" + (viewSuggest ? " active" : "")}
+            onClick={() => { setViewSuggest(true); setViewSchedule(false); setCurrentId(null); setStudy(null); }}
           >
-            <div className="nb-name">📅 Quiz schedule</div>
+            <div className="nb-name">Suggest notebook {inboxN > 0 && <span className="badge-count">{inboxN}</span>}</div>
+            <div className="nb-meta">unfiled transcripts</div>
+          </div>
+          <div
+            className={"nb-item" + (viewSchedule ? " active" : "")}
+            onClick={() => { setViewSchedule(true); setViewSuggest(false); setStudy(null); }}
+          >
+            <div className="nb-name">Quiz schedule</div>
             <div className="nb-meta">all subjects</div>
           </div>
           {notebooks.map((nb) => (
             <div
               key={nb.id}
-              className={"nb-item" + (nb.id === currentId && !viewSchedule ? " active" : "")}
-              onClick={() => { setCurrentId(nb.id); setViewSchedule(false); setStudy(null); }}
+              className={"nb-item" + (nb.id === currentId && !viewSchedule && !viewSuggest ? " active" : "")}
+              onClick={() => { setCurrentId(nb.id); setViewSchedule(false); setViewSuggest(false); setStudy(null); }}
             >
               <div className="nb-name">{nb.name}</div>
               <div className="nb-meta">{nb.recording_count} rec · {nb.card_count} cards</div>
-              <button className="nb-del" title="Rename" onClick={(e) => renameNotebook(nb, e)}>✎</button>
+              <button className="nb-del" title="Rename" onClick={(e) => renameNotebook(nb, e)}>Rename</button>
               <button className="nb-del nb-del-del" title="Delete notebook" onClick={(e) => deleteNotebook(nb, e)}>×</button>
             </div>
           ))}
@@ -94,10 +115,19 @@ export default function App() {
           />
           <button type="submit">＋</button>
         </form>
+        <SharePanel />
         <div className="sidebar-foot">100% local · nothing leaves this Mac</div>
       </aside>
 
       <main className="main">
+        {proc?.busy && (
+          <div className="proc-bar">
+            <span className="proc-dot" /> Processing…
+            {proc.recordings > 0 && ` ${proc.recordings} recording${proc.recordings > 1 ? "s" : ""}`}
+            {proc.decks > 0 && ` · ${proc.decks} deck${proc.decks > 1 ? "s" : ""}`}
+            {proc.tests_waiting > 0 && ` · ${proc.tests_waiting} test${proc.tests_waiting > 1 ? "s" : ""} awaiting scope`}
+          </div>
+        )}
         {error && <div className="banner error">{error}</div>}
         {study ? (
           <StudyView
@@ -106,6 +136,12 @@ export default function App() {
             topic={study.topic}
             title={study.title}
             onClose={() => setStudy(null)}
+          />
+        ) : viewSuggest ? (
+          <SuggestView
+            notebooks={notebooks}
+            onChanged={refresh}
+            onOpenNotebook={(id) => { setCurrentId(id); setViewSuggest(false); }}
           />
         ) : viewSchedule ? (
           <ScheduleView onOpenNotebook={(id) => { setCurrentId(id); setViewSchedule(false); }} />

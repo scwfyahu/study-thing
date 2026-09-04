@@ -48,8 +48,7 @@ OLLAMA_URL = os.environ.get("STUDY_OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("STUDY_OLLAMA_MODEL", "qwen3:8b")
 
 # Pipeline tuning
-CHUNK_SECONDS = int(os.environ.get("STUDY_CHUNK_SECONDS", "600"))
-MAX_CARDS_PER_CHUNK = int(os.environ.get("STUDY_MAX_CARDS", "10"))
+LLM_NUM_CTX = int(os.environ.get("STUDY_LLM_CTX", "65536"))  # full transcript in one pass
 
 for _d in (DATA_DIR, AUDIO_DIR):
     _d.mkdir(parents=True, exist_ok=True)

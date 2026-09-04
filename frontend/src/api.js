@@ -71,6 +71,18 @@ export const api = {
     fd.append("file", file);
     return fetch(`/api/notebooks/${nbId}/recordings`, { method: "POST", body: fd }).then(j);
   },
+  bulkUpload: (files) => {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return fetch("/api/inbox/recordings", { method: "POST", body: fd }).then(j);
+  },
+  inbox: () => fetch("/api/inbox").then(j),
+  inboxCount: () => fetch("/api/inbox/count").then(j),
+  assign: (id, notebookId) =>
+    fetch(`/api/recordings/${id}/assign`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notebook_id: notebookId }),
+    }).then(j),
+  reclassify: (id) => fetch(`/api/recordings/${id}/reclassify`, { method: "POST" }).then(j),
   reprocess: (id) =>
     fetch(`/api/recordings/${id}/reprocess`, { method: "POST" }).then(j),
   deleteRecording: (id) => fetch(`/api/recordings/${id}`, { method: "DELETE" }).then(j),
@@ -85,6 +97,9 @@ export const api = {
   tests: (nbId) => fetch(`/api/notebooks/${nbId}/tests`).then(j),
   scanTests: (nbId) =>
     fetch(`/api/notebooks/${nbId}/tests/scan`, { method: "POST" }).then(j),
+  guessTestScope: (id, signal) => fetch(`/api/tests/${id}/guess`, {method:"POST", signal}).then(j),
+  confirmTest: (id, scope) => fetch(`/api/tests/${id}/confirm`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scope})}).then(j),
+  testDeck: (id) => fetch(`/api/tests/${id}/deck`, { method: "POST" }).then(j),
   deleteTest: (id) => fetch(`/api/tests/${id}`, { method: "DELETE" }).then(j),
   schedule: () => fetch("/api/schedule").then(j),
   scanSchedule: () =>

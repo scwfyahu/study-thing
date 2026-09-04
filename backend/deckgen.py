@@ -1,5 +1,6 @@
 """Deck lifecycle: scope guessing + on-demand flashcard generation per quiz deck."""
 import json
+import logging
 import re
 
 from . import db
@@ -12,28 +13,14 @@ SCOPE_SCHEMA = {
 }
 
 
-def _ollama(messages: list[dict], schema=None, timeout=600) -> str:
-    import requests
-
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": messages,
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.2, "num_ctx": 16384, "num_predict": 4096},
-        "keep_alive": "5m",
-    }
-    if schema:
-        payload["format"] = schema
-    r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout)
-    if r.status_code == 400 and "think" in payload:
-        payload.pop("think")
-        r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=timeout)
-    r.raise_for_status()
-    return re.sub(r"<think>.*?</think>", "", r.json()["message"]["content"], flags=re.S).strip()
+def _ollama(messages: list[dict], schema=None, timeout=600, retries=0) -> str:
+    from . import llm
+    return llm.chat(messages, schema=schema, num_ctx=65536, num_predict=8192,
+                    temperature=0.2, timeout=timeout, retries=retries)
 
 
-def guess_scope(notebook_name: str, syllabus_topics: list[str], announcement: str) -> list[str]:
+def guess_scope(notebook_name: str, syllabus_topics: list[str], announcement: str,
+                 retries: int = 0) -> list[str]:
     """Auto-guess a quiz's scope: most relevant syllabus topics for the announced assessment."""
     try:
         raw = _ollama([
@@ -49,11 +36,17 @@ def guess_scope(notebook_name: str, syllabus_topics: list[str], announcement: st
                 f"Syllabus topics:\n" + "\n".join(f"- {t}" for t in syllabus_topics) +
                 f"\n\nTeacher's announcement:\n{announcement}"
             )},
-        ], SCOPE_SCHEMA, timeout=300)
+        ], SCOPE_SCHEMA, timeout=300, retries=retries)
         data = json.loads(raw)
-        return [str(t).strip() for t in data.get("scope", []) if str(t).strip()]
+        scope = [str(t).strip() for t in data.get("scope", []) if str(t).strip()]
+        # fall back to the full syllabus rather than an empty scope
+        return scope or syllabus_topics
     except Exception:
-        return []
+        # LLM unreachable/flaky — scope = everything on the syllabus
+        return syllabus_topics
+
+
+logger = logging.getLogger(__name__)
 
 
 def generate_deck_cards(deck_id: int) -> int:
@@ -87,13 +80,17 @@ def generate_deck_cards(deck_id: int) -> int:
     n = max(len(chunks), 1)
     for k, ch in enumerate(chunks):
         try:
-            raw = pipeline.extract_cards(ch["text"], nb["name"], k, n, "\n".join(scope) if scope else None)
+            with db.get_conn() as conn:
+                conn.execute(
+                    "UPDATE decks SET progress=? WHERE id=?",
+                    (0.05 + 0.9 * (k / max(n, 1)), deck_id))
+            raw = pipeline.extract_cards(ch["text"], nb["name"], "\n".join(scope) if scope else None)
             for q, a, topic in pipeline.clean_cards(raw, seen):
                 with db.get_conn() as conn:
                     conn.execute(
-                        "INSERT INTO cards(recording_id, deck_id, question, answer, topic, position) "
-                        "VALUES (?,?,?,?,?,?)",
-                        (ch["recording_id"], deck_id, q, a, topic, total),
+                        "INSERT INTO cards(notebook_id, recording_id, deck_id, question, answer, topic, position) "
+                        "SELECT notebook_id, id, ?, ?, ?, ? FROM recordings WHERE id = ?",
+                        (deck_id, q, a, topic, total, ch["recording_id"]),
                     )
                 total += 1
         except Exception:
@@ -101,3 +98,47 @@ def generate_deck_cards(deck_id: int) -> int:
     with db.get_conn() as conn:
         conn.execute("UPDATE decks SET status='ready', error=NULL WHERE id=?", (deck_id,))
     return total
+
+def auto_decks_for_tests(nb_id: int, test_ids: list) -> None:
+    """Generate the deck for each CONFIRMED test. Reuses the draft deck
+    created at scan time (no duplicate decks). No prompts."""
+    import json as _json
+    for tid in test_ids:
+        try:
+            with db.get_conn() as conn:
+                t = conn.execute("SELECT * FROM tests WHERE id=?", (tid,)).fetchone()
+            if t is None or not t["confirmed"]:
+                continue  # wait for user to confirm the scope first
+            nb = conn.execute(
+                "SELECT name, topics, syllabus FROM notebooks WHERE id=?",
+                (nb_id,)).fetchone()
+            syllabus_topics = [t.strip() for t in (nb["topics"] or "").splitlines() if t.strip()]
+            ann = f"{t['title']} ({t['date_text'] or ''})"
+            try:
+                sc = _json.loads(t["scope"] or "[]")
+                if sc:
+                    ann += f". Scope mentioned: {', '.join(sc)}"
+            except Exception:
+                pass
+            with db.get_conn() as conn:
+                deck = conn.execute(
+                    "SELECT id FROM decks WHERE quiz_id=? ORDER BY id DESC LIMIT 1",
+                    (tid,)).fetchone()
+                did = deck["id"] if deck else None
+            if did is None:
+                cur = conn.execute(
+                    "INSERT INTO decks(notebook_id, quiz_id, title, scope,"
+                    " status) VALUES (?,?,?,?,'generating')",
+                    (nb_id, tid, t["title"], _json.dumps([])))
+                conn.commit()
+                did = cur.lastrowid
+            # apply the confirmed scope to the deck, then generate
+            scope = guess_scope(nb["name"], syllabus_topics, ann)
+            conn.execute("UPDATE decks SET scope=?, status='generating' WHERE id=?",
+                         (_json.dumps(scope, ensure_ascii=False), did))
+            conn.commit()
+            generate_deck_cards(did)
+            logger.info("auto-deck %s (%s) generated for test %s", did,
+                        t["title"], tid)
+        except Exception:
+            logger.exception("auto deck failed for test %s", tid)

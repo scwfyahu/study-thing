@@ -56,7 +56,7 @@ export default function StudyView({ notebookId, recordingId, topic, title, onClo
   if (queue.cards.length === 0) {
     return (
       <div className="study done">
-        <h2>🎉 Queue done</h2>
+        <h2>Queue done</h2>
         <p className="muted">{doneCount} card{doneCount === 1 ? "" : "s"} reviewed. Review again after the due dates come up — every "Good" stretches the interval.</p>
         <div className="study-controls">
           <button className="btn" onClick={() => api.study(notebookId, recordingId, topic).then(setQueue)}>Restart (any due)</button>

@@ -59,18 +59,11 @@ def _llm_topics(text: str) -> list[str]:
             )},
             {"role": "user", "content": f"Syllabus text:\n{text[:9000]}"},
         ],
-        "stream": False,
-        "think": False,
-        "format": TOPIC_SCHEMA,
-        "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 2048},
-        "keep_alive": "5m",
     }
-    r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=600)
-    if r.status_code == 400 and "think" in payload:
-        payload.pop("think")
-        r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=600)
-    r.raise_for_status()
-    content = re.sub(r"<think>.*?</think>", "", r.json()["message"]["content"], flags=re.S)
+    from . import llm
+    content = llm.chat(payload["messages"], schema=TOPIC_SCHEMA,
+                       num_ctx=16384, num_predict=2048, temperature=0.1,
+                       timeout=600)
     data = json.loads(content)
     return [str(t).strip() for t in data.get("topics", []) if str(t).strip()]
 

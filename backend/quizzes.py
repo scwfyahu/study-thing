@@ -40,22 +40,9 @@ def _difficulty_guide(d: int) -> str:
 
 
 def _ollama_json(messages: list[dict]) -> dict:
-    import requests
-
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": messages,
-        "stream": False,
-        "think": False,
-        "format": QUIZ_SCHEMA,
-        "options": {"temperature": 0.4, "num_ctx": 16384, "num_predict": 8192},
-        "keep_alive": "5m",
-    }
-    r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=1800)
-    if r.status_code == 400 and "think" in payload:
-        payload.pop("think")
-        r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=1800)
-    r.raise_for_status()
+    from . import llm
+    content = llm.chat(messages, schema=QUIZ_SCHEMA, num_ctx=16384,
+                       num_predict=8192, temperature=0.4, timeout=1800)
     content = re.sub(r"<think>.*?</think>", "", r.json()["message"]["content"], flags=re.S)
     return json.loads(content)
 
@@ -64,8 +51,7 @@ def generate_quiz(notebook_id: int, source: str, scope_terms: list[str], difficu
     with db.get_conn() as conn:
         rows = conn.execute(
             """SELECT c.question, c.answer, c.topic FROM cards c
-               JOIN recordings r ON r.id = c.recording_id
-               WHERE r.notebook_id=? ORDER BY r.id, c.position""",
+               WHERE c.notebook_id=? ORDER BY c.recording_id, c.position""",
             (notebook_id,),
         ).fetchall()
     cards = [dict(r) for r in rows]

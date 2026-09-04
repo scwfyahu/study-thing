@@ -34,7 +34,7 @@ export default function QuizView({ quizId, title, onClose }) {
     const pct = Math.round((score / questions.length) * 100);
     return (
       <div className="study done">
-        <h2>{pct >= 80 ? "🎉" : pct >= 50 ? "💪" : "📖"} {score}/{questions.length} — {pct}%</h2>
+        <h2>{score}/{questions.length} — {pct}%</h2>
         <p className="muted">{pct >= 80 ? "Solid. Move to a harder difficulty." : pct >= 50 ? "Halfway there — review the missed ones and retry." : "Review the flashcards for this scope, then try again."}</p>
         <div className="study-controls">
           <button className="btn" onClick={() => { setIdx(0); setPicked(null); setScore(0); setFinished(false); }}>↻ Retry</button>

@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, srs, syllabus
+from .tunnel import router as tunnel_router
 from .config import (
     ASR_BACKEND,
     AUDIO_DIR,
@@ -45,6 +46,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(tunnel_router)
+
+
+@app.get("/api/processing")
+def processing_status():
+    with db.get_conn() as conn:
+        rec = conn.execute(
+            "SELECT COUNT(*) AS n FROM recordings WHERE status IN"
+            " ('queued','denoising','splitting','transcribing','reading','classifying')"
+        ).fetchone()["n"]
+        decks = conn.execute(
+            "SELECT COUNT(*) AS n FROM decks WHERE status='generating'"
+        ).fetchone()["n"]
+        waiting = conn.execute(
+            "SELECT COUNT(*) AS n FROM tests WHERE confirmed=0"
+        ).fetchone()["n"]
+    return {"recordings": rec, "decks": decks, "tests_waiting": waiting,
+            "busy": (rec + decks) > 0}
+
+
+@app.get("/api/llm/status")
+def llm_status():
+    from . import llm
+    try:
+        return llm.status()
+    except Exception as e:  # noqa: BLE001
+        return {"provider": "unknown", "available": False,
+                "model": None, "error": str(e)}
+
 
 
 def _nb_or_404(conn, nb_id: int):
@@ -62,8 +92,7 @@ def list_notebooks():
         rows = conn.execute(
             """SELECT n.id, n.name, n.created_at,
                  (SELECT COUNT(*) FROM recordings r WHERE r.notebook_id = n.id) AS recording_count,
-                 (SELECT COUNT(*) FROM cards c JOIN recordings r ON c.recording_id = r.id
-                   WHERE r.notebook_id = n.id) AS card_count
+                 (SELECT COUNT(*) FROM cards c WHERE c.notebook_id = n.id) AS card_count
                FROM notebooks n ORDER BY n.created_at DESC, n.id DESC"""
         ).fetchall()
     return [dict(r) for r in rows]
@@ -149,8 +178,8 @@ def get_notebook(nb_id: int):
             """SELECT
                  SUM(CASE WHEN c.reps=0 THEN 1 ELSE 0 END) AS new_count,
                  SUM(CASE WHEN c.reps>0 AND c.due_date <= date('now') THEN 1 ELSE 0 END) AS due_count
-               FROM cards c JOIN recordings r ON r.id=c.recording_id
-               WHERE r.notebook_id=?""",
+               FROM cards c
+               WHERE c.notebook_id=?""",
             (nb_id,),
         ).fetchone()
     out_recs = []
@@ -169,7 +198,7 @@ def get_notebook(nb_id: int):
 def study_queue(nb_id: int, recording_id: int | None = None, topic: str | None = None, deck_id: int | None = None):
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
-        where = "r.notebook_id=?"
+        where = "c.notebook_id=?"
         args: list = [nb_id]
         if recording_id:
             where += " AND c.recording_id=?"
@@ -182,7 +211,7 @@ def study_queue(nb_id: int, recording_id: int | None = None, topic: str | None =
             args.append(deck_id)
         rows = conn.execute(
             f"""SELECT c.id, c.question, c.answer, c.topic, c.reps, c.interval_days, c.due_date
-               FROM cards c JOIN recordings r ON r.id = c.recording_id
+               FROM cards c
                WHERE {where} AND (c.reps=0 OR c.due_date <= date('now'))
                ORDER BY (c.reps=0) DESC, c.due_date, c.id""",
             args,
@@ -239,11 +268,11 @@ def notebook_cards(nb_id: int, topic: str | None = None, deck_id: int | None = N
         _nb_or_404(conn, nb_id)
         counts = conn.execute(
             """SELECT COALESCE(NULLIF(c.topic, ''), 'Untagged') AS t, COUNT(*) AS n
-               FROM cards c JOIN recordings r ON r.id = c.recording_id
-               WHERE r.notebook_id=? GROUP BY t ORDER BY n DESC""",
+               FROM cards c
+               WHERE c.notebook_id=? GROUP BY t ORDER BY n DESC""",
             (nb_id,),
         ).fetchall()
-        where = "r.notebook_id=?"
+        where = "c.notebook_id=?"
         args = [nb_id]
         if topic:
             where += " AND COALESCE(NULLIF(c.topic, ''), 'Untagged')=?"
@@ -252,9 +281,9 @@ def notebook_cards(nb_id: int, topic: str | None = None, deck_id: int | None = N
             where += " AND c.deck_id=?"
             args.append(deck_id)
         rows = conn.execute(
-            f"""SELECT c.id, c.question, c.answer, c.topic, r.id AS recording_id, r.original_name
-               FROM cards c JOIN recordings r ON r.id = c.recording_id
-               WHERE {where} ORDER BY r.id, c.position""",
+            f"""SELECT c.id, c.question, c.answer, c.topic, c.recording_id
+               FROM cards c
+               WHERE {where} ORDER BY c.recording_id, c.position""",
             args,
         ).fetchall()
     return {"topics": [dict(x) for x in counts], "cards": [dict(x) for x in rows]}
@@ -264,8 +293,15 @@ def notebook_cards(nb_id: int, topic: str | None = None, deck_id: int | None = N
 def schedule_all():
     with db.get_conn() as conn:
         rows = conn.execute(
-            """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.created_at,
-                      n.name AS notebook_name, n.id AS notebook_id
+            """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.confirmed,
+                      n.name AS notebook_name, n.id AS notebook_id,
+                      (SELECT d.id FROM decks d WHERE d.quiz_id = t.id
+                        ORDER BY d.id DESC LIMIT 1) AS deck_id,
+                      (SELECT d.status FROM decks d WHERE d.quiz_id = t.id
+                        ORDER BY d.id DESC LIMIT 1) AS deck_status,
+                      (SELECT COUNT(*) FROM cards c WHERE c.deck_id IN
+                        (SELECT d2.id FROM decks d2 WHERE d2.quiz_id = t.id))
+                       AS deck_cards
                FROM tests t JOIN notebooks n ON n.id = t.notebook_id
                WHERE t.date_iso IS NOT NULL
                ORDER BY t.date_iso ASC, t.created_at DESC""",
@@ -302,23 +338,21 @@ def schedule_rescan_all():
 
 # ---------------------------------------------------------------- recordings
 
-@app.post("/api/notebooks/{nb_id}/recordings", status_code=201)
-async def upload_recording(nb_id: int, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def _persist_upload(nb_id, file: UploadFile):
+    """Write one uploaded file to disk + insert a recording row. Returns rec dict."""
     with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
+        _nb_or_404(conn, nb_id) if nb_id else None
     ext = Path(file.filename or "").suffix.lower()
     if ext and ext not in ALLOWED_EXT:
         raise HTTPException(415, f"unsupported file type {ext}")
     kind = "notes" if ext in notes.NOTES_EXT else "recording"
     safe_base = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(file.filename or "recording").stem)[:80] or "recording"
-
     with db.get_conn() as conn:
         cur = conn.execute(
             "INSERT INTO recordings(notebook_id, original_name, stored_path, kind, status) VALUES (?,?,?,?,'queued')",
             (nb_id, file.filename or "recording", "", kind),
         )
         rec_id = cur.lastrowid
-
     dest = AUDIO_DIR / f"{rec_id}_{safe_base}{ext or '.m4a'}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("wb") as out:
@@ -326,9 +360,28 @@ async def upload_recording(nb_id: int, background_tasks: BackgroundTasks, file: 
             out.write(chunk)
     with db.get_conn() as conn:
         conn.execute("UPDATE recordings SET stored_path=? WHERE id=?", (str(dest), rec_id))
+    return {"id": rec_id, "kind": kind, "notebook_id": nb_id}
 
-    background_tasks.add_task(pipeline.process_recording, rec_id)
-    return {"id": rec_id, "status": "queued", "kind": kind}
+
+@app.post("/api/notebooks/{nb_id}/recordings", status_code=201)
+async def upload_recording(nb_id: int, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    saved = await _persist_upload(nb_id, file)
+    background_tasks.add_task(pipeline.process_recording, saved["id"])
+    return {"status": "queued", **saved}
+
+
+@app.post("/api/inbox/recordings", status_code=201)
+async def bulk_upload_inbox(background_tasks: BackgroundTasks,
+                            files: list[UploadFile] = File(...)):
+    """Drop many files at once, unassigned. Each is transcribed (ASR) then
+    auto-classified and held in escrow — no LLM during upload, nothing filed."""
+    created = []
+    for f in files:
+        saved = await _persist_upload(None, f)
+        created.append(saved)
+    for s in created:
+        background_tasks.add_task(pipeline.process_recording, s["id"])
+    return {"queued": len(created), "created": created}
 
 
 @app.get("/api/recordings/{rec_id}")
@@ -371,6 +424,96 @@ def reprocess_recording(rec_id: int, background_tasks: BackgroundTasks):
     return {"id": rec_id, "status": "queued"}
 
 
+def _parse_suggestion(rec) -> dict | None:
+    try:
+        sug = json.loads(rec["suggestion"])
+        return sug if isinstance(sug, dict) else None
+    except Exception:
+        return None
+
+
+@app.get("/api/inbox")
+def list_inbox():
+    """Every unassigned (escrow) recording + its classification suggestion."""
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, original_name, kind, status, note, error, suggestion,"
+            " duration_sec, created_at FROM recordings WHERE notebook_id IS NULL"
+            " ORDER BY id DESC"
+        ).fetchall()
+        chunks = {}
+        for r in rows:
+            if r["status"] in ("done", "unclassified", "error"):
+                t = conn.execute(
+                    "SELECT text FROM chunks WHERE recording_id=? ORDER BY idx", (r["id"],)
+                ).fetchall()
+                chunks[r["id"]] = "\n\n".join(c["text"] for c in t)
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["suggestion"] = _parse_suggestion(r)
+        d["transcript_preview"] = (chunks.get(r["id"]) or "")[:800]
+        out.append(d)
+    return out
+
+
+@app.get("/api/inbox/count")
+def inbox_count():
+    with db.get_conn() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) AS n FROM recordings WHERE notebook_id IS NULL"
+        ).fetchone()["n"]
+    return {"count": n}
+
+
+@app.post("/api/recordings/{rec_id}/reclassify")
+def reclassify_recording(rec_id: int):
+    """Re-run classification on an escrowed recording (idempotent; never files)."""
+    import json as _json
+    from . import classify as _classify
+
+    with db.get_conn() as conn:
+        rec = conn.execute(
+            "SELECT id, stored_path, kind, notebook_id FROM recordings WHERE id=?", (rec_id,)
+        ).fetchone()
+        if rec is None:
+            raise HTTPException(404, "recording not found")
+        if rec["notebook_id"] is not None:
+            raise HTTPException(409, "already assigned to a notebook")
+        text = "\n\n".join(
+            c["text"] for c in conn.execute(
+                "SELECT text FROM chunks WHERE recording_id=? ORDER BY idx", (rec_id,)
+            ).fetchall()
+        )
+    sug = _classify.classify(text)
+    with db.get_conn() as conn:
+        conn.execute("UPDATE recordings SET suggestion=?, status='unclassified', error=NULL WHERE id=?",
+                     (_json.dumps(sug, ensure_ascii=False), rec_id))
+    return {"id": rec_id, "suggestion": sug}
+
+
+@app.post("/api/recordings/{rec_id}/assign")
+def assign_recording(rec_id: int, body: dict, background_tasks: BackgroundTasks):
+    """Human-assign an escrowed recording to a notebook, then scan its tests.
+    Explicitly never auto-files; this is the only path that commits a notebook."""
+    target = body.get("notebook_id")
+    if target is None:
+        raise HTTPException(422, "notebook_id required")
+    with db.get_conn() as conn:
+        rec = conn.execute(
+            "SELECT id, notebook_id, stored_path FROM recordings WHERE id=?", (rec_id,)
+        ).fetchone()
+        if rec is None:
+            raise HTTPException(404, "recording not found")
+        _nb_or_404(conn, int(target))
+        conn.execute(
+            "UPDATE recordings SET notebook_id=?, suggestion=NULL, error=NULL WHERE id=?",
+            (int(target), rec_id),
+        )
+    background_tasks.add_task(pipeline.finish_assignment, rec_id, int(target))
+    return {"id": rec_id, "notebook_id": int(target), "status": "assigned"}
+
+
 @app.get("/api/recordings/{rec_id}/cards")
 def recording_cards(rec_id: int):
     with db.get_conn() as conn:
@@ -398,7 +541,7 @@ def recording_transcript(rec_id: int):
 def _fetch_cards_for(conn, where: str, args: tuple):
     return conn.execute(
         f"""SELECT c.question, c.answer FROM cards c
-            JOIN recordings r ON r.id = c.recording_id WHERE {where} ORDER BY r.id, c.position""",
+            WHERE {where} ORDER BY c.recording_id, c.position""",
         args,
     ).fetchall()
 
@@ -453,7 +596,7 @@ def list_tests(nb_id: int):
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
         rows = conn.execute(
-            """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.created_at,
+            """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.confirmed,
                       r.original_name AS recording_name
                FROM tests t LEFT JOIN recordings r ON r.id = t.recording_id
                WHERE t.notebook_id=? ORDER BY
@@ -480,6 +623,10 @@ def scan_tests(nb_id: int, background_tasks: BackgroundTasks):
         recs = conn.execute(
             "SELECT id FROM recordings WHERE notebook_id=? AND status='done'", (nb_id,)
         ).fetchall()
+        # remember which tests were already confirmed so a rescan keeps them
+        old_confirmed = {r["title"] for r in conn.execute(
+            "SELECT title FROM tests WHERE notebook_id=? AND confirmed=1",
+            (nb_id,)).fetchall()}
     if not recs:
         return {"ok": True, "scanned": 0}
     conn = db.get_conn()
@@ -490,7 +637,96 @@ def scan_tests(nb_id: int, background_tasks: BackgroundTasks):
     n = 0
     for r in recs:
         n += exams.scan_recording(r["id"], nb_id, today)
+    with db.get_conn() as conn:
+        # re-confirm tests whose exact title was already confirmed
+        conn.execute(
+            "UPDATE tests SET confirmed=1 WHERE notebook_id=? AND title IN ("
+            + ",".join("?" for _ in old_confirmed) + ")",
+            (nb_id, *old_confirmed)) if old_confirmed else None
+        new_ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM tests WHERE notebook_id=?", (nb_id,)).fetchall()
+            if r["confirmed"] == 1]
+    if new_ids:
+        background_tasks.add_task(deckgen.auto_decks_for_tests,
+                                  nb_id, new_ids)
     return {"ok": True, "scanned": n}
+
+
+@app.post("/api/tests/{tid}/deck")
+def test_deck(tid: int, background_tasks: BackgroundTasks):
+    """Create + generate a deck for one scheduled test (idempotent)."""
+    import json as _json
+    with db.get_conn() as conn:
+        t = conn.execute("SELECT * FROM tests WHERE id=?", (tid,)).fetchone()
+        if t is None:
+            raise HTTPException(404, "test not found")
+        if not t["confirmed"]:
+            raise HTTPException(409,
+                "test scope is not confirmed — confirm it first")
+        existing = conn.execute(
+            "SELECT id FROM decks WHERE quiz_id=? ORDER BY id DESC LIMIT 1",
+            (tid,)).fetchone()
+        if existing:
+            did = existing["id"]
+        else:
+            cur = conn.execute(
+                "INSERT INTO decks(notebook_id, quiz_id, title, scope, status)"
+                " VALUES (?,?,?,?,'generating')",
+                (t["notebook_id"], tid, t["title"], _json.dumps([])))
+            conn.commit()
+            did = cur.lastrowid
+    background_tasks.add_task(deckgen.auto_decks_for_tests,
+                              t["notebook_id"], [tid])
+    return {"deck_id": did, "status": "generating"}
+
+
+@app.post("/api/tests/{tid}/guess")
+def guess_test_scope(tid: int):
+    """Auto-guess a test's scope from its announcement + notebook syllabus."""
+    import json as _json
+    with db.get_conn() as conn:
+        t = conn.execute("SELECT * FROM tests WHERE id=?", (tid,)).fetchone()
+        if t is None:
+            raise HTTPException(404, "test not found")
+        nb = conn.execute(
+            "SELECT name, topics, syllabus FROM notebooks WHERE id=?",
+            (t["notebook_id"],)).fetchone()
+    syllabus_topics = [x.strip() for x in (nb["topics"] or "").splitlines() if x.strip()]
+    ann = f"{t['title']} ({t['date_text'] or ''})"
+    try:
+        sc = _json.loads(t["scope"] or "[]")
+        if sc:
+            ann += f". Scope mentioned: {', '.join(sc)}"
+    except Exception:
+        pass
+    try:
+        scope = deckgen.guess_scope(nb["name"], syllabus_topics, ann,
+                                    retries=1)
+    except Exception as e:
+        raise HTTPException(502, f"scope guess failed: {e}")
+    return {"scope": scope}
+
+
+@app.post("/api/tests/{tid}/confirm")
+def confirm_test(tid: int, body: dict, background_tasks: BackgroundTasks):
+    """Confirm a test's scope, then generate its deck automatically."""
+    import json as _json
+    with db.get_conn() as conn:
+        t = conn.execute("SELECT * FROM tests WHERE id=?", (tid,)).fetchone()
+        if t is None:
+            raise HTTPException(404, "test not found")
+        scope = body.get("scope")
+        if scope is not None:
+            scope_list = [str(x).strip() for x in scope if str(x).strip()]
+            conn.execute("UPDATE tests SET scope=?, confirmed=1 WHERE id=?",
+                         (_json.dumps(scope_list), tid))
+        else:
+            conn.execute("UPDATE tests SET confirmed=1 WHERE id=?", (tid,))
+        conn.commit()
+    # scope confirmed -> generate deck for this test now
+    background_tasks.add_task(deckgen.auto_decks_for_tests,
+                              t["notebook_id"], [tid])
+    return {"ok": True}
 
 
 @app.delete("/api/tests/{tid}")
@@ -592,7 +828,7 @@ def list_decks(nb_id: int):
     with db.get_conn() as conn:
         _nb_or_404(conn, nb_id)
         rows = conn.execute(
-            """SELECT d.id, d.title, d.scope, d.status, d.error, d.created_at, d.quiz_id,
+            """SELECT d.id, d.title, d.scope, d.status, d.error, d.progress, d.created_at, d.quiz_id,
                       (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) AS card_count
                FROM decks d WHERE d.notebook_id=? ORDER BY d.id DESC""",
             (nb_id,),

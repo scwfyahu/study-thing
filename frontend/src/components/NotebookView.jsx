@@ -94,9 +94,11 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   };
 
   const newDeck = async () => {
-    const name = prompt("Deck name (e.g. Quarter 1 Exam):");
-    if (!name) return;
-    await api.createDeck(notebookId, { title: name });
+    // fully automatic: guess scope from notebook topics, generate immediately
+    const dk = await api.createDeck(notebookId, { title: "Full syllabus" });
+    const { scope } = await api.guessDeckScope(dk.id);
+    await api.updateDeck(dk.id, { scope });
+    await api.confirmDeck(dk.id);
     load();
   };
 
@@ -232,7 +234,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         {tests.map((t) => (
           <div key={t.id} className={"test-card" + (t.date_iso ? " dated" : "")}>
             <div className="test-head">
-              <span className="test-title">🗓 {t.title}</span>
+              <span className="test-title">{t.title}</span>
               {t.date_text && <span className="test-date">{t.date_text}</span>}
               {fmtDate(t.date_iso) && <span className="test-iso">{fmtDate(t.date_iso)}</span>}
               <span className="spacer" />
@@ -291,9 +293,9 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
       <section className="rev-section">
         <div className="rev-bar">
           <h4>Flashcard decks</h4>
-          <button className="btn small" onClick={newDeck}>＋ New deck</button>
+          <button className="btn small" onClick={newDeck}>＋ Auto-generate deck</button>
         </div>
-        {decks.length === 0 && <p className="muted small-note">No decks yet. A deck is created automatically when a quiz/test is detected — or add one manually. Flashcards generate only after you confirm a deck scope.</p>}
+        {decks.length === 0 && <p className="muted small-note">No decks yet. Decks generate automatically when a test is detected in your recordings — or click the button to build one from the full syllabus.</p>}
         {decks.map((dk) => (
           <DeckRow key={dk.id} dk={dk} onChanged={load} onStudy={onStudy} nbName={nb.name} notebookId={notebookId} onConfirmScope={(d) => setScopeModal(d)} />
         ))}
@@ -340,7 +342,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         {quizzes.map((qz) => (
           <div key={qz.id} className="quiz-row">
             <button className="rev-main" onClick={() => setActiveQuiz({ id: qz.id, title: qz.title })}>
-              <span className="rev-topic">📝 {qz.title}</span>
+              <span className="rev-topic">{qz.title}</span>
               <span className="muted">{qz.created_at.slice(0, 16).replace("T", " ")}</span>
             </button>
             <button className="icon-del" onClick={() => delQuiz(qz.id)} title="Delete quiz">✕</button>
@@ -435,8 +437,10 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
         <span className={`badge s-${dk.status === "ready" ? "done" : dk.status === "error" ? "error" : dk.status}`}>{dk.status}</span>
         <span className="muted">{dk.card_count} cards</span>
         <span className="spacer" />
-        {dk.status === "draft" && (
-          <button className="btn small primary" onClick={() => onConfirmScope(dk)}>Confirm scope</button>
+        {(dk.status === "draft" || dk.status === "ready" || dk.status === "error") && (
+          <button className="btn small primary" onClick={() => onConfirmScope(dk)}>
+            {dk.status === "draft" ? "Confirm scope" : "Edit scope"}
+          </button>
         )}
         {dk.status === "ready" && (
           <>
@@ -458,7 +462,7 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
             <details key={c.id} className="card">
               <summary>{c.question}</summary>
               <p>{c.answer}</p>
-              {c.topic && <div className="muted small-note">📌 {c.topic}</div>}
+              {c.topic && <div className="muted small-note">{c.topic}</div>}
             </details>
           ))}
         </div>
@@ -519,7 +523,6 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks }) {
         <div className="progress"><div className="bar" style={{ width: `${Math.round(r.progress * 100)}%` }} /></div>
       )}
       {r.status === "error" && <div className="err-text">{r.error}</div>}
-      {r.note && r.status === "done" && <div className="muted small-note">{r.note}</div>}
     </div>
   );
 }

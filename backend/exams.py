@@ -31,23 +31,9 @@ def _norm(s: str) -> str:
 
 
 def _ollama_json(messages: list[dict]) -> dict:
-    import requests
-
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": messages,
-        "stream": False,
-        "think": False,
-        "format": DETECT_SCHEMA,
-        "options": {"temperature": 0.1, "num_ctx": 8192, "num_predict": 2048},
-        "keep_alive": "5m",
-    }
-    r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=900)
-    if r.status_code == 400 and "think" in payload:
-        payload.pop("think")
-        r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=900)
-    r.raise_for_status()
-    content = re.sub(r"<think>.*?</think>", "", r.json()["message"]["content"], flags=re.S)
+    from . import llm
+    content = llm.chat(messages, schema=DETECT_SCHEMA, num_ctx=8192,
+                       num_predict=2048, temperature=0.1, timeout=900)
     return json.loads(content)
 
 

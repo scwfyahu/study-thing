@@ -12,8 +12,7 @@ import threading
 from . import db
 from .config import (
     AUDIO_DIR,
-    CHUNK_SECONDS,
-    MAX_CARDS_PER_CHUNK,
+    LLM_NUM_CTX,
     OLLAMA_MODEL,
     OLLAMA_URL,
     RNNOISE_MODEL,
@@ -105,14 +104,15 @@ def _transcribe_chunk(path) -> str:
 
 
 def _ollama_chat(payload: dict) -> dict:
-    import requests
-
-    r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=1800)
-    if r.status_code == 400 and "think" in payload:
-        payload.pop("think")
-        r = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=1800)
-    r.raise_for_status()
-    return r.json()
+    from . import llm
+    content = llm.chat(
+        payload["messages"],
+        schema=payload.get("format"),
+        num_ctx=(payload.get("options") or {}).get("num_ctx", 65536),
+        num_predict=(payload.get("options") or {}).get("num_predict", 8192),
+        temperature=(payload.get("options") or {}).get("temperature", 0.2),
+        timeout=1800)
+    return {"message": {"content": content}}
 
 
 def _parse_cards_json(content: str) -> list:
@@ -128,7 +128,7 @@ def _parse_cards_json(content: str) -> list:
     return cards if isinstance(cards, list) else []
 
 
-def extract_cards(text: str, notebook_name: str, chunk_idx: int, total: int, topics: str | None = None) -> list:
+def extract_cards(text: str, notebook_name: str, topics: str | None = None) -> list:
     focus = ""
     if topics and topics.strip():
         focus = (
@@ -141,8 +141,8 @@ def extract_cards(text: str, notebook_name: str, chunk_idx: int, total: int, top
     user_msg = (
         f"Class: {notebook_name}\n"
         f"{focus}"
-        f"This is part {chunk_idx + 1} of {total} of one lecture recording.\n\n"
-        f"Transcript chunk:\n{text}"
+        f"Full lecture transcript (do not truncate; cover everything important):\n\n"
+        f"{text}"
     )
     payload = {
         "model": OLLAMA_MODEL,
@@ -153,7 +153,7 @@ def extract_cards(text: str, notebook_name: str, chunk_idx: int, total: int, top
         "stream": False,
         "think": False,
         "format": EXTRACT_SCHEMA,
-        "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 4096},
+        "options": {"temperature": 0.2, "num_ctx": LLM_NUM_CTX, "num_predict": 8192},
         "keep_alive": "5m",
     }
     try:
@@ -171,7 +171,7 @@ def _norm_key(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def clean_cards(raw_cards: list, seen: set, cap: int = MAX_CARDS_PER_CHUNK) -> list:
+def clean_cards(raw_cards: list, seen: set, cap: int = 100000) -> list:
     """Returns list of (question, answer, topic_or_None)."""
     out = []
     for c in raw_cards:
@@ -205,56 +205,86 @@ def _meaningful(text: str, min_words: int = 20) -> bool:
     return sum(1 for w in text.split() if len(w) >= 3) >= min_words
 
 
-def _extract_cards_from_texts(recording_id: int, rec, texts: list[tuple[int, str]]) -> None:
-    """Shared card-extraction stage: chunk texts -> LLM cards -> dedupe/store."""
-    seen: set = set()
-    total_cards = 0
-    n = len(texts)
-    for k, (i, text) in enumerate(texts):
-        _set(recording_id, status="extracting", progress=0.60 + 0.38 * (k / max(n, 1)))
-        raw = extract_cards(text, rec["notebook_name"], i, n, rec["topics"])
-        for q, a, topic in clean_cards(raw, seen):
-            with db.get_conn() as conn:
-                conn.execute(
-                    "INSERT OR IGNORE INTO cards(recording_id, question, answer, topic, position) VALUES (?,?,?,?,?)",
-                    (recording_id, q, a, topic, total_cards),
-                )
-            total_cards += 1
+def _store_chunk(recording_id: int, text: str, start_sec: float = 0.0) -> None:
+    with db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
+            (recording_id, 0, start_sec, text),
+        )
 
-    if total_cards == 0 and rec["topics"] and (rec["topics"] or "").strip():
-        _set(recording_id, status="done", progress=1.0,
-             note=("0 flashcards — the content didn't match this notebook's Focus "
-                   "topics. Move to the right class (dropdown) or edit Focus, then Re-process."))
-    else:
-        _set(recording_id, status="done", progress=1.0, note=f"{total_cards} flashcards")
+
+def _scan_tests(recording_id: int, notebook_id: int) -> None:
+    """Scan a transcript for test announcements (only once the rec is assigned)."""
+    import datetime as _dt
+    from . import exams as _exams
+
+    try:
+        _exams.scan_recording(recording_id, notebook_id, _dt.date.today().isoformat())
+    except Exception:
+        pass  # one failing scan never kills the pipeline
+
+
+def finish_assignment(recording_id: int, notebook_id: int) -> None:
+    """Run once a human assigns an inbox (escrowed) recording to a notebook.
+    Scans for test announcements; NEVER generates flashcards (that is per-test scope)."""
+    _set(recording_id, status="done", progress=1.0,
+         note="Assigned — scanning transcript for test announcements…")
+    _scan_tests(recording_id, notebook_id)
+    _set(recording_id, status="done", progress=1.0,
+         note="Assigned & transcribed — flashcards generate from a test's scope.")
+
+
+def _classify_and_escrow(recording_id: int, text: str) -> None:
+    """Inbox path: classify the transcript, then hold it as 'unclassified'.
+    NEVER files the recording — filing is a human decision in the inbox."""
+    suggestion = None
+    _set(recording_id, status="classifying", progress=0.95,
+         note="Transcribed — classifying…", error=None)
+    try:
+        from . import classify as _classify
+
+        sug = _classify.classify(text)
+        suggestion = json.dumps(sug, ensure_ascii=False) if sug else None
+    except Exception:
+        suggestion = None
+    note = "Transcribed — assign it to a notebook from the Suggest tab."
+    _set(recording_id, status="unclassified", progress=1.0, note=note,
+         suggestion=suggestion, error=None)
 
 
 def _process_notes(recording_id: int, rec) -> None:
-    """OCR handwritten-note images/PDFs, then extract cards from the text."""
+    """OCR handwritten-note images/PDFs into a transcript chunk."""
     from .notes import ocr_file
 
     _set(recording_id, status="reading", progress=0.05, error=None)
     text = ocr_file(rec["stored_path"])
-    with db.get_conn() as conn:
-        conn.execute(
-            "INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
-            (recording_id, 0, 0, text),
-        )
+    _store_chunk(recording_id, text)
     if not _meaningful(text, min_words=10):
         _set(recording_id, status="done", progress=1.0,
              note="No readable text found in the notes — blurry or not handwriting?")
         return
-    _set(recording_id, status="done", progress=1.0,
-         note="Notes read — flashcards generate when you confirm a quiz deck.")
+    if rec["notebook_id"] is None:
+        _classify_and_escrow(recording_id, text)
+    else:
+        _set(recording_id, status="done", progress=1.0,
+             note="Notes read — flashcards generate from a test's scope.")
 
 
 def process_recording(recording_id: int) -> None:
-    """Full pipeline for one recording. Serialized by _pipeline_lock."""
+    """Full pipeline for one recording. Serialized by _pipeline_lock.
+
+    Assigned recording (notebook set, e.g. re-process):
+      denoise -> transcribe -> store -> scan tests -> done.
+    Inbox recording (notebook NULL):
+      denoise -> transcribe -> store -> classify -> 'unclassified' (escrow).
+    LLM (classify) runs ONLY for inbox recordings, after transcription — never
+    during upload. Flashcard decks are generated separately, per test scope.
+    """
     with _pipeline_lock:
         with db.get_conn() as conn:
             rec = conn.execute(
-                "SELECT r.*, n.name AS notebook_name, n.topics AS topics FROM recordings r "
-                "JOIN notebooks n ON n.id = r.notebook_id WHERE r.id=?",
+                "SELECT r.*, n.name AS notebook_name FROM recordings r "
+                "LEFT JOIN notebooks n ON n.id = r.notebook_id WHERE r.id=?",
                 (recording_id,),
             ).fetchone()
         if rec is None:
@@ -267,37 +297,23 @@ def process_recording(recording_id: int) -> None:
             work_dir.mkdir(parents=True, exist_ok=True)
             _set(recording_id, status="denoising", progress=0.02, error=None)
             wav, duration = prepare_audio(rec["stored_path"], work_dir)
-            _set(recording_id, duration_sec=duration, status="splitting", progress=0.04)
-            chunk_files = split_chunks(wav, work_dir)
-            n = len(chunk_files)
+            _set(recording_id, duration_sec=duration, status="transcribing",
+                 progress=0.1)
+            text = _transcribe_chunk(wav)  # whole recording, one pass
+            _store_chunk(recording_id, text)
 
-            texts = []
-            for i, cf in enumerate(chunk_files):
-                _set(recording_id, status="transcribing", progress=0.05 + 0.50 * (i / max(n, 1)))
-                text = _transcribe_chunk(cf)
-                with db.get_conn() as conn:
-                    conn.execute(
-                        "INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
-                        (recording_id, i, i * CHUNK_SECONDS, text),
-                    )
-                texts.append((i, text))
-
-            # tests are extracted right after transcription — don't wait for card generation
-            try:
-                import datetime as _dt
-                from . import exams as _exams
-
-                _exams.scan_recording(recording_id, rec["notebook_id"], _dt.date.today().isoformat())
-            except Exception:
-                pass
-
-            # NO auto card extraction — flashcards are generated per quiz deck (see deckgen).
-            meaningful = [(i, t) for i, t in texts if _meaningful(t)]
-            if not meaningful:
+            if not _meaningful(text):
                 _set(recording_id, status="done", progress=1.0,
                      note="No clear speech found — the recording may be too noisy or empty.")
                 return
-            _set(recording_id, status="done", progress=1.0, note="Transcribed — flashcards generate when you confirm a quiz deck.")
+
+            if rec["notebook_id"] is None:
+                # inbox -> classify + escrow, wait for human assignment
+                _classify_and_escrow(recording_id, text)
+            else:
+                _scan_tests(recording_id, rec["notebook_id"])
+                _set(recording_id, status="done", progress=1.0,
+                     note="Transcribed — flashcards generate from a test's scope.")
         except Exception as e:  # noqa: BLE001 — surface any failure on the recording row
             _set(recording_id, status="error", error=str(e)[:800])
         finally:
