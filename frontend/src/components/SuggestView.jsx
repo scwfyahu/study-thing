@@ -10,7 +10,18 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
   const [busy, setBusy] = useState(false);
   const [newFor, setNewFor] = useState(null); // recording id being given a fresh notebook
   const [newName, setNewName] = useState("");
+  const [transcript, setTranscript] = useState(null); // {name, text}
   const fileInput = useRef(null);
+
+  const openTranscript = async (r) => {
+    try {
+      const t = await api.transcript(r.id);
+      const text = t.text || (t.chunks || []).map((c) => c.text).join("\n\n");
+      setTranscript({ name: r.original_name, text: text || "(empty transcript)" });
+    } catch (e) {
+      alert(e.message);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -112,9 +123,21 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
             creating={newFor === r.id} newName={newName} setNewName={setNewName}
             onCreateGo={() => createAndAssign(r.id, r.suggestion?.name || stripExt(r.original_name), r.suggestion?.topics)}
             onCreateCancel={() => { setNewFor(null); setNewName(""); }}
-            onReclassify={reclassify} onDelete={del} />
+            onReclassify={reclassify} onDelete={del} onTranscript={openTranscript} />
         ))}
       </section>
+
+      {transcript && (
+        <div className="modal-overlay" onClick={() => setTranscript(null)}>
+          <div className="modal transcript-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Transcript — {transcript.name}</h3>
+              <button className="icon-del" onClick={() => setTranscript(null)} title="Close">✕</button>
+            </div>
+            <pre className="transcript-body">{transcript.text}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -138,7 +161,7 @@ function BusyRow({ r }) {
   );
 }
 
-function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCreateStart, onCreateGo, onCreateCancel, onReclassify, onDelete }) {
+function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCreateStart, onCreateGo, onCreateCancel, onReclassify, onDelete, onTranscript }) {
   const [open, setOpen] = useState(false);
   const sug = r.suggestion;
   const hasSuggestion = sug && sug.name && sug.notebook_id;
@@ -153,6 +176,7 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className="badge s-unclassified">Waiting</span>
         <span className="spacer" />
+        <button className="btn small" onClick={() => onTranscript(r)} title="View full transcript">Transcript</button>
         <button className="btn small" onClick={() => onReclassify(r.id)} title="Re-run classification">⟳ Re-classify</button>
         <button className="icon-del" onClick={() => onDelete(r.id, r.original_name)} title="Delete">✕</button>
       </div>

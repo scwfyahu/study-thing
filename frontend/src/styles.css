@@ -430,3 +430,13 @@ h4 { font-size: 15px; }
   border: 1px solid rgba(136,192,208,.25);
   font-size: 12px; line-height: 1; padding: 5px 10px; border-radius: 999px;
 }
+
+/* ------------- transcript modal ------------- */
+.transcript-modal { max-width: 900px; width: 92vw; display: flex; flex-direction: column; max-height: 86vh; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.modal-head h3 { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transcript-body {
+  flex: 1; overflow: auto; margin: 0; padding: 12px 14px;
+  background: var(--ink2); border: 1px solid var(--line); border-radius: var(--r-sm);
+  font: 400 13.5px/1.6 var(--sans); white-space: pre-wrap; color: var(--text);
+}

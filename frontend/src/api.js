@@ -84,6 +84,7 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notebook_id: notebookId }),
     }).then(j),
   reclassify: (id) => fetch(`/api/recordings/${id}/reclassify`, { method: "POST" }).then(j),
+  transcript: (id) => fetch(`/api/recordings/${id}/transcript`).then(j),
   reprocess: (id) =>
     fetch(`/api/recordings/${id}/reprocess`, { method: "POST" }).then(j),
   deleteRecording: (id) => fetch(`/api/recordings/${id}`, { method: "DELETE" }).then(j),
