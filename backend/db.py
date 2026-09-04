@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS recordings(
   note TEXT,
   error TEXT,
   duration_sec REAL,
+  recorded_at TEXT,
   suggestion TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -154,6 +155,8 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE recordings ADD COLUMN kind TEXT NOT NULL DEFAULT 'recording'")
     if "suggestion" not in rcols:
         conn.execute("ALTER TABLE recordings ADD COLUMN suggestion TEXT")
+    if "recorded_at" not in rcols:
+        conn.execute("ALTER TABLE recordings ADD COLUMN recorded_at TEXT")
     _drop_not_null_notebook_id(conn)
 
 
@@ -174,8 +177,9 @@ def _drop_not_null_notebook_id(conn) -> None:
         progress REAL NOT NULL DEFAULT 0,
         note TEXT,
         error TEXT,
-        duration_sec REAL,
+          duration_sec REAL,
         suggestion TEXT,
+        recorded_at TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       INSERT INTO recordings_new(id, notebook_id, original_name, stored_path, kind, status,

@@ -186,8 +186,9 @@ def get_notebook(nb_id: int):
             raise HTTPException(404, "notebook not found")
         has_syllabus = bool((nb["syllabus"] or "").strip())
         recs = conn.execute(
-            """SELECT id, original_name, kind, status, progress, error, note, duration_sec, created_at
-               FROM recordings WHERE notebook_id=? ORDER BY id DESC""",
+            """SELECT id, original_name, kind, status, progress, error, note, duration_sec,
+                    recorded_at, created_at
+               FROM recordings WHERE notebook_id=? ORDER BY COALESCE(recorded_at, created_at) DESC, id DESC""",
             (nb_id,),
         ).fetchall()
         stats = conn.execute(
@@ -374,9 +375,11 @@ async def _persist_upload(nb_id, file: UploadFile):
     with dest.open("wb") as out:
         while chunk := await file.read(4 * 1024 * 1024):
             out.write(chunk)
+    recorded_at = pipeline.recorded_at_of(dest)  # embedded tag / file mtime
     with db.get_conn() as conn:
-        conn.execute("UPDATE recordings SET stored_path=? WHERE id=?", (str(dest), rec_id))
-    return {"id": rec_id, "kind": kind, "notebook_id": nb_id}
+        conn.execute("UPDATE recordings SET stored_path=?, recorded_at=? WHERE id=?",
+                     (str(dest), recorded_at, rec_id))
+    return {"id": rec_id, "kind": kind, "notebook_id": nb_id, "recorded_at": recorded_at}
 
 
 @app.post("/api/notebooks/{nb_id}/recordings", status_code=201)
@@ -454,8 +457,8 @@ def list_inbox():
     with db.get_conn() as conn:
         rows = conn.execute(
             "SELECT id, original_name, kind, status, note, error, suggestion,"
-            " duration_sec, created_at FROM recordings WHERE notebook_id IS NULL"
-            " ORDER BY id DESC"
+            " duration_sec, recorded_at, created_at FROM recordings WHERE notebook_id IS NULL"
+            " ORDER BY COALESCE(recorded_at, created_at) DESC, id DESC"
         ).fetchall()
         chunks = {}
         for r in rows:

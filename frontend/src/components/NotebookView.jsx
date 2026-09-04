@@ -536,6 +536,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className={`badge s-${r.status}`}>{STATUS_LABEL[r.status] || r.status}{r.queue_pos ? ` (#${r.queue_pos})` : ""}</span>
         {r.duration_sec ? <span className="muted">{fmtDur(r.duration_sec)}</span> : null}
+        {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
         <span className="spacer" />
         {r.status === "done" && (
           <>

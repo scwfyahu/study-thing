@@ -4,6 +4,7 @@ Runs sequentially (one recording at a time) so an M-series Air with 16GB
 unified memory never holds the ASR model and the LLM at the same time.
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -53,6 +54,35 @@ def _set(recording_id: int, **fields) -> None:
     cols = ", ".join(f"{k}=?" for k in fields)
     with db.get_conn() as conn:
         conn.execute(f"UPDATE recordings SET {cols} WHERE id=?", (*fields.values(), recording_id))
+
+
+def recorded_at_of(path) -> str | None:
+    """Best-known date the recording was made: embedded tag first, else file mtime.
+    Returns ISO 'YYYY-MM-DD' or None."""
+    import datetime as dt
+    import json
+    import subprocess
+
+    try:
+        p = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format_tags",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=20)
+        tags = (json.loads(p.stdout).get("format") or {}).get("tags") or {}
+        val = tags.get("creation_time") or tags.get("date") or tags.get("year")
+        if val:
+            s = str(val).replace("Z", "+00:00")
+            # year-only tag
+            if re.fullmatch(r"\d{4}", s):
+                return f"{s}-01-01"
+            d = dt.datetime.fromisoformat(s)
+            return d.date().isoformat()
+    except Exception:
+        pass
+    try:
+        return dt.date.fromtimestamp(os.path.getmtime(str(path))).isoformat()
+    except Exception:
+        return None
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:

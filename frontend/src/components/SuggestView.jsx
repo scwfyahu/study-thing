@@ -175,6 +175,7 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
         <span className="rec-name">{r.original_name}</span>
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className="badge s-unclassified">Waiting</span>
+        {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
         <span className="spacer" />
         <button className="btn small" onClick={() => onTranscript(r)} title="View full transcript">Transcript</button>
         <button className="btn small" onClick={() => onReclassify(r.id)} title="Re-run classification">⟳ Re-classify</button>
