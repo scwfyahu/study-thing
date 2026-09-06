@@ -177,7 +177,7 @@ export default function App() {
           <div className="empty">
             <h2>Your classes, distilled to flashcards.</h2>
             <p>Create a notebook for each class, then drop in your lecture recordings.</p>
-            <p className="hint">Noise gets cleaned (ffmpeg) → transcribed locally (MLX Whisper) → turned into flashcards (Ollama).</p>
+            <p className="hint">Noise gets cleaned (ffmpeg) → transcribed locally (whisper.cpp) → turned into flashcards (LLM).</p>
           </div>
         )}
         {modal && (
