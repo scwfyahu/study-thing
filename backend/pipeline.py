@@ -354,11 +354,11 @@ def _classify_and_escrow(recording_id: int, text: str) -> None:
 
 
 def _process_notes(recording_id: int, rec) -> None:
-    """OCR handwritten-note images/PDFs into a transcript chunk."""
-    from .notes import ocr_file
+    """OCR/slide-transcribe handwritten notes or slides into a transcript chunk."""
+    from . import notes as _notes
 
     _set(recording_id, status="reading", progress=0.05, error=None)
-    text = ocr_file(rec["stored_path"])
+    text = _notes.read_notes(rec["stored_path"])
     _store_chunk(recording_id, text)
     if not _meaningful(text, min_words=10):
         _set(recording_id, status="done", progress=1.0,

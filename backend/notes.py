@@ -1,11 +1,129 @@
-"""Handwritten notes OCR — macOS Apple Vision (VNRecognizeTextRequest).
+"""Handwritten notes & slide ingestion — two backends:
 
-Local, no cloud. Handles photos (jpg/png/webp/heic) and PDFs (rasterized per page).
-Windows/Linux: not yet supported (raises a clear error).
+1. vision (default, OpenRouter): images/PDF pages go STRAIGHT to a vision
+   LLM (STUDY_OPENROUTER_VISION_MODEL, default google/gemini-2.5-flash) —
+   no OCR pass, the model reads the pixels. Handles handwriting, layout,
+   diagrams-as-text, math.
+2. ocr (fallback): Apple Vision VNRecognizeTextRequest — local, macOS only.
+   Used when provider is local Ollama or the vision call fails.
+
+Images: jpg/png/webp (heic converted via sips). PDFs: rasterized per page.
 """
+import base64
+import logging
 import platform
 
+logger = logging.getLogger(__name__)
+
 NOTES_EXT = {".png", ".jpg", ".jpeg", ".webp", ".heic", ".pdf"}
+
+VISION_PROMPT = (
+    "Transcribe ALL text on this slide/page verbatim, preserving reading "
+    "order and list structure. Include titles, headers, bullets, table "
+    "contents, captions, and any handwritten annotations. Output plain "
+    "text only — no commentary, no markdown headings."
+)
+
+
+def read_notes(path: str) -> str:
+    """Vision-first transcription of an image/PDF, OCR fallback."""
+    from . import llm
+
+    if llm.provider() == "openrouter":
+        try:
+            return vision_read(path)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("vision notes failed (%s) — falling back to OCR", e)
+    return ocr_file(path)
+
+
+def vision_read(path: str) -> str:
+    """Send image(s)/PDF pages directly to the vision LLM."""
+    import os
+
+    from . import llm
+
+    model = os.environ.get("STUDY_OPENROUTER_VISION_MODEL",
+                           "google/gemini-2.5-flash")
+    images = vision_images(path)
+    if not images:
+        raise RuntimeError(f"no readable images in {path}")
+    parts = []
+    out = []
+    for i, (mime, b64) in enumerate(images, 1):
+        content = [
+            {"type": "text", "text": (
+                (f"Page {i} of {len(images)}. " if len(images) > 1 else "")
+                + VISION_PROMPT)},
+            {"type": "image_url",
+             "image_url": {"url": f"data:{mime};base64,{b64}"}},
+        ]
+        text = llm.chat(
+            [{"role": "user", "content": content}],
+            num_predict=4000, temperature=0.0, timeout=300,
+            model_override=model,
+        )
+        if text.strip():
+            out.append(text.strip())
+    return "\n\n".join(out)
+
+
+def vision_images(path: str) -> list[tuple[str, str]]:
+    """[(mime, base64)] for an image file, or each PDF page as JPEG."""
+    p = str(path).lower()
+    if p.endswith(".pdf"):
+        return _pdf_pages_jpeg(path)
+    mime = {".png": "image/png", ".webp": "image/webp"}.get(
+        _ext(path), "image/jpeg")
+    src = path
+    if _ext(path) == ".heic":
+        src = _heic_to_jpeg(path)
+        mime = "image/jpeg"
+    with open(src, "rb") as f:
+        return [(mime, base64.b64encode(f.read()).decode())]
+
+
+def _ext(path: str) -> str:
+    import os
+    return os.path.splitext(str(path).lower())[1]
+
+
+def _heic_to_jpeg(path: str) -> str:
+    import subprocess
+    import tempfile
+
+    out = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False).name
+    subprocess.run(["sips", "-s", "format", "jpeg", str(path),
+                    "--out", out], check=True, capture_output=True)
+    return out
+
+
+def _pdf_pages_jpeg(path: str) -> list[tuple[str, str]]:
+    import base64
+
+    from Foundation import NSURL
+    from Quartz import PDFDocument
+
+    doc = PDFDocument.alloc().initWithURL_(
+        NSURL.fileURLWithPath_(str(path)))
+    if doc is None or doc.pageCount() == 0:
+        raise RuntimeError(f"could not read PDF: {path}")
+    from AppKit import NSBitmapImageRep, NSImage, NSSize, NSJPEGFileType
+    pages = []
+    for i in range(doc.pageCount()):
+        page = doc.pageAtIndex_(i)
+        # thumbnailOfSize_ is not exposed on PDFPage in all PyObjC builds;
+        # thumbnailOfSize_forBox_ is the API that exists (10.13+)
+        try:
+            thumb = page.thumbnailOfSize_forBox_(NSSize(1600, 2000), 0)  # 0 = kPDFDisplayBoxMediaBox
+        except AttributeError:
+            thumb = page.thumbnailOfSize_(NSSize(1600, 2000))
+        rep = NSBitmapImageRep.alloc().initWithData_(thumb.TIFFRepresentation())
+        jpeg = rep.representationUsingType_properties_(NSJPEGFileType, {
+            "NSImageCompressionFactor": 0.85})
+        pages.append(("image/jpeg",
+                      base64.b64encode(bytes(jpeg)).decode()))
+    return pages
 
 
 def ocr_file(path: str) -> str:
@@ -40,7 +158,10 @@ def _ocr_pdf(path: str) -> str:
     parts = []
     for i in range(doc.pageCount()):
         page = doc.pageAtIndex_(i)
-        thumb = page.thumbnailOfSize_(NSSize(1600, 2000))
+        try:
+            thumb = page.thumbnailOfSize_forBox_(NSSize(1600, 2000), 0)
+        except AttributeError:
+            thumb = page.thumbnailOfSize_(NSSize(1600, 2000))
         rep = NSBitmapImageRep.alloc().initWithData_(thumb.TIFFRepresentation())
         handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(rep.CGImage(), {})
         parts.append(_run(handler))

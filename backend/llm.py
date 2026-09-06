@@ -76,7 +76,8 @@ def zdr_enforced() -> bool:
 
 def chat(messages: list[dict], *, schema=None, num_ctx: int = 65536,
          num_predict: int = 8192, temperature: float = 0.2,
-         timeout: int = 1800, retries: int = 0) -> str:
+         timeout: int = 1800, retries: int = 0,
+         model_override: str | None = None) -> str:
     """Call the LLM, retrying with backoff until an endpoint works.
 
     Free tiers go down for seconds-to-minutes; transcription already runs
@@ -93,7 +94,8 @@ def chat(messages: list[dict], *, schema=None, num_ctx: int = 65536,
         try:
             if provider() == "openrouter":
                 return _openrouter_chat(messages, schema, temperature,
-                                        num_predict, timeout)
+                                        num_predict, timeout,
+                                        model_override=model_override)
             return _ollama_chat(messages, schema, num_ctx, num_predict,
                                 temperature, timeout)
         except LLMUnavailable as e:
@@ -137,7 +139,7 @@ def _ollama_chat(messages, schema, num_ctx, num_predict, temperature,
 
 
 def _openrouter_chat(messages, schema, temperature, num_predict,
-                     timeout) -> str:
+                     timeout, model_override=None) -> str:
     import requests
 
     key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get(
@@ -145,14 +147,17 @@ def _openrouter_chat(messages, schema, temperature, num_predict,
     if not key:
         raise RuntimeError("STUDY_LLM_PROVIDER=openrouter but "
                            "OPENROUTER_API_KEY is not set")
-    model = os.environ.get("STUDY_OPENROUTER_MODEL", "z-ai/glm-5.2:free")
-    if zdr_enforced() and model not in ZDR_FREE_MODELS:
+    model = model_override or os.environ.get(
+        "STUDY_OPENROUTER_MODEL", "z-ai/glm-5.2:free")
+    if model_override is None and zdr_enforced() and model not in ZDR_FREE_MODELS:
         raise RuntimeError(
             f"model '{model}' is not zero-retention. ZDR is enforced "
             f"(STUDY_LLM_ZDR=1). Allowed ZDR models: "
             + ", ".join(ZDR_FREE_MODELS))
     # free tier is flaky (404/429) — walk the ZDR allowlist as fallbacks
-    candidates = [model] + [m for m in ZDR_FREE_MODELS if m != model]
+    # (skipped for explicit overrides: the caller picked the model on purpose)
+    candidates = [model] if model_override else \
+        [model] + [m for m in ZDR_FREE_MODELS if m != model]
     last_err = None
     for attempt in candidates:
         try:
