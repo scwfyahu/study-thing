@@ -80,6 +80,7 @@ export default function App() {
       <aside className="sidebar">
         <h1 className="brand">Study<span>Thing</span></h1>
         <nav className="nb-list">
+          <div className="side-h">Inbox</div>
           <div
             className={"nb-item" + (viewSuggest ? " active" : "")}
             onClick={() => { setViewSuggest(true); setViewSchedule(false); setCurrentId(null); setStudy(null); }}
@@ -94,6 +95,8 @@ export default function App() {
             <div className="nb-name">Quiz schedule</div>
             <div className="nb-meta">all subjects</div>
           </div>
+          <div className="side-split" />
+          <div className="side-h">Notebooks</div>
           {notebooks.map((nb) => (
             <div
               key={nb.id}
