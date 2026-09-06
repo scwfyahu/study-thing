@@ -85,14 +85,14 @@ export default function App() {
             className={"nb-item" + (viewSuggest ? " active" : "")}
             onClick={() => { setViewSuggest(true); setViewSchedule(false); setCurrentId(null); setStudy(null); }}
           >
-            <div className="nb-name">Suggest notebook {inboxN > 0 && <span className="badge-count">{inboxN}</span>}</div>
+            <div className="nb-name" title="Suggest notebook">Suggest notebook {inboxN > 0 && <span className="badge-count">{inboxN}</span>}</div>
             <div className="nb-meta">unfiled transcripts</div>
           </div>
           <div
             className={"nb-item" + (viewSchedule ? " active" : "")}
             onClick={() => { setViewSchedule(true); setViewSuggest(false); setStudy(null); }}
           >
-            <div className="nb-name">Quiz schedule</div>
+            <div className="nb-name" title="Quiz schedule">Quiz schedule</div>
             <div className="nb-meta">all subjects</div>
           </div>
           <div className="side-split" />
@@ -103,7 +103,7 @@ export default function App() {
               className={"nb-item" + (nb.id === currentId && !viewSchedule && !viewSuggest ? " active" : "")}
               onClick={() => { setCurrentId(nb.id); setViewSchedule(false); setViewSuggest(false); setStudy(null); }}
             >
-              <div className="nb-name">{nb.name}</div>
+              <div className="nb-name" title={nb.name}>{nb.name}</div>
               <div className="nb-meta">{nb.recording_count} rec · {nb.card_count} cards</div>
               <button className="nb-del" title="Rename" onClick={(e) => renameNotebook(nb, e)}>Rename</button>
               <button className="nb-del nb-del-del" title="Delete notebook" onClick={(e) => deleteNotebook(nb, e)}>×</button>
