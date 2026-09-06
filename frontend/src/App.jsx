@@ -13,6 +13,15 @@ export default function App() {
   const [notebooks, setNotebooks] = useState([]);
   const [proc, setProc] = useState(null);
   const [inboxN, setInboxN] = useState(0);
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem("st-theme");
+    if (saved) return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("st-theme", theme);
+  }, [theme]);
   useEffect(() => {
     const check = async () => {
       try { setProc(await fetch("/api/processing").then((r) => r.json())); } catch {}
@@ -121,6 +130,11 @@ export default function App() {
           <button type="submit">＋</button>
         </form>
         <SharePanel />
+        <div className="sidebar-foot-row">
+          <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
+        </div>
         <div className="sidebar-foot">100% local · nothing leaves this Mac</div>
       </aside>
 

@@ -75,6 +75,32 @@
 }
 
 * { box-sizing: border-box; }
+
+/* ---- dark mode: token inversion, same Cobalt system ---- */
+:root[data-theme="dark"] {
+  --color-paper:      oklch(20% 0.015 258);
+  --color-paper-2:    oklch(24% 0.017 258);
+  --color-paper-3:    oklch(28% 0.018 258);
+  --color-ink:        oklch(93% 0.008 250);
+  --color-ink-2:      oklch(85% 0.01 250);
+  --color-muted:      oklch(62% 0.012 250);
+  --color-rule:       oklch(31% 0.014 258);
+  --color-rule-2:     oklch(38% 0.014 258);
+  --color-accent:     oklch(72% 0.16 256);
+  --color-accent-ink: oklch(20% 0.015 258);
+  --color-focus:      oklch(72% 0.16 256);
+  --color-good:       oklch(75% 0.11 155);
+  --color-bad:        oklch(68% 0.16 25);
+  --elev: 0 1px 2px oklch(0% 0 0 / 0.4);
+}
+:root[data-theme="dark"] .btn.primary:hover,
+:root[data-theme="dark"] button.primary:hover,
+:root[data-theme="dark"] .primary:hover { background: oklch(78% 0.16 256); border-color: oklch(78% 0.16 256); }
+:root[data-theme="dark"] .modal-overlay { background: oklch(8% 0.01 258 / 0.6); }
+:root[data-theme="dark"] .study-card .question,
+:root[data-theme="dark"] .stat-n,
+:root[data-theme="dark"] .brand,
+:root[data-theme="dark"] h1, :root[data-theme="dark"] h2, :root[data-theme="dark"] h3 { color: var(--color-ink); }
 html, body { overflow-x: clip; }
 body {
   margin: 0;
@@ -151,6 +177,14 @@ a { color: var(--color-ink); text-decoration: none; }
   border-radius: var(--radius-control); width: 40px; font-size: 1.125rem; font-weight: 600;
 }
 .sidebar-foot { margin-top: var(--space-2xs); font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); text-align: center; }
+.sidebar-foot-row { margin-top: var(--space-2xs); display: flex; justify-content: center; }
+.theme-toggle {
+  background: transparent; border: 1px solid var(--color-rule-2); border-radius: var(--radius-input);
+  color: var(--color-muted); font-family: var(--font-mono); font-size: 0.625rem;
+  letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 10px; cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.theme-toggle:hover { border-color: var(--color-accent); color: var(--color-accent); }
 
 /* ============================ main ============================ */
 .main { flex: 1; padding: var(--space-md) var(--space-lg); min-width: 0; }
