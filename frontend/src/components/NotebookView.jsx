@@ -510,6 +510,7 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
 
 function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }) {
   const active = ACTIVE.has(r.status);
+  const [listen, setListen] = useState(false);
 
   const del = async () => {
     if (!(await askConfirm(`Delete "${r.original_name}" and its flashcards?`))) return;
@@ -538,6 +539,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
         {r.duration_sec ? <span className="muted">{fmtDur(r.duration_sec)}</span> : null}
         {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
         <span className="spacer" />
+        <button className="btn small" onClick={() => setListen(!listen)}>🎧 {listen ? "Hide" : "Listen"}</button>
         {r.status === "done" && (
           <>
             <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
@@ -563,6 +565,9 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
           {r.note && <div className="muted small-note" style={{ marginTop: 4 }}>{r.note}</div>}
           <div className="progress"><div className="bar" style={{ width: `${Math.round(r.progress * 100)}%` }} /></div>
         </>
+      )}
+      {listen && (
+        <audio controls preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
       )}
       {r.status === "error" && <div className="err-text">{r.error}</div>}
     </div>

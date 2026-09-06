@@ -127,6 +127,7 @@ export default function App() {
             {proc.recordings > 0 && ` ${proc.recordings} recording${proc.recordings > 1 ? "s" : ""}`}
             {proc.decks > 0 && ` · ${proc.decks} deck${proc.decks > 1 ? "s" : ""}`}
             {proc.tests_waiting > 0 && ` · ${proc.tests_waiting} test${proc.tests_waiting > 1 ? "s" : ""} awaiting scope`}
+            <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-muted)" }}>{Math.round((proc.progress || 0) * 100)}%</span>
             <button
               className="btn small"
               style={{ marginLeft: "auto" }}
@@ -140,6 +141,9 @@ export default function App() {
               }}
             >Stop all</button>
           </div>
+        )}
+        {proc?.busy && (
+          <div className="progress proc-progress"><div className="bar" style={{ width: `${Math.round((proc.progress || 0) * 100)}%` }} /></div>
         )}
         {error && <div className="banner error">{error}</div>}
         {study ? (

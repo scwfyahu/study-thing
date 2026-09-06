@@ -149,6 +149,7 @@ function stripExt(name) {
 
 function BusyRow({ r }) {
   const label = { queued: "Queued", denoising: "Cleaning audio", transcribing: "Transcribing", classifying: "Classifying…", reading: "Reading notes" }[r.status] || r.status;
+  const [listen, setListen] = useState(false);
   return (
     <div className="rec-row">
       <div className="rec-top">
@@ -156,14 +157,20 @@ function BusyRow({ r }) {
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className={`badge s-${r.status}`}>{label}</span>
         {r.note && <span className="muted small-note">{r.note}</span>}
-        <div className="progress"><div className="bar" style={{ width: `${Math.round((r.progress || 0) * 100)}%` }} /></div>
+        <span className="spacer" />
+        <button className="btn small" onClick={() => setListen(!listen)}>🎧 {listen ? "Hide" : "Listen"}</button>
       </div>
+      <div className="progress"><div className="bar" style={{ width: `${Math.round((r.progress || 0) * 100)}%` }} /></div>
+      {listen && (
+        <audio controls preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
+      )}
     </div>
   );
 }
 
 function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCreateStart, onCreateGo, onCreateCancel, onReclassify, onDelete, onTranscript }) {
   const [open, setOpen] = useState(false);
+  const [listen, setListen] = useState(false);
   const sug = r.suggestion;
   const hasSuggestion = sug && sug.name && sug.notebook_id;
   const sugExists = hasSuggestion && notebooks.some((n) => n.id === sug.notebook_id);
@@ -174,6 +181,7 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
       <div className="rec-top">
         <button className="rec-toggle" onClick={() => setOpen(!open)}>{open ? "▾" : "▸"}</button>
         <span className="rec-name">{r.original_name}</span>
+        <button className="btn small" onClick={() => setListen(!listen)}>🎧 {listen ? "Hide" : "Listen"}</button>
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className="badge s-unclassified">Waiting</span>
         {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
@@ -182,6 +190,10 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
         <button className="btn small" onClick={() => onReclassify(r.id)} title="Re-run classification">⟳ Re-classify</button>
         <button className="icon-del" onClick={() => onDelete(r.id, r.original_name)} title="Delete">✕</button>
       </div>
+
+      {listen && (
+        <audio controls preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
+      )}
 
       {sug && (
         <div className={"suggestion" + (sugExists ? "" : " none")}>

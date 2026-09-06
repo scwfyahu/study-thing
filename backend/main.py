@@ -6,7 +6,7 @@ import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -52,18 +52,21 @@ app.include_router(tunnel_router)
 @app.get("/api/processing")
 def processing_status():
     with db.get_conn() as conn:
-        rec = conn.execute(
-            "SELECT COUNT(*) AS n FROM recordings WHERE status IN"
+        rows = conn.execute(
+            "SELECT progress FROM recordings WHERE status IN"
             " ('queued','denoising','splitting','transcribing','reading','classifying')"
-        ).fetchone()["n"]
+        ).fetchall()
+        rec = len(rows)
         decks = conn.execute(
             "SELECT COUNT(*) AS n FROM decks WHERE status='generating'"
         ).fetchone()["n"]
         waiting = conn.execute(
             "SELECT COUNT(*) AS n FROM tests WHERE confirmed=0"
         ).fetchone()["n"]
+    # overall progress: mean of active recording progress (queued counts as 0)
+    avg = round(sum(r["progress"] or 0 for r in rows) / len(rows), 3) if rows else 0.0
     return {"recordings": rec, "decks": decks, "tests_waiting": waiting,
-            "busy": (rec + decks) > 0}
+            "progress": avg, "busy": (rec + decks) > 0}
 
 
 @app.post("/api/jobs/stop")
@@ -622,6 +625,59 @@ def _export(cards, fmt: str, deck_name: str, tags: list[str]):
 
 def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s)[:100] or "deck"
+
+
+@app.get("/api/recordings/{rec_id}/audio")
+def get_audio(rec_id: int, request: Request):
+    """Stream the original recording for in-app playback (Range requests supported)."""
+    import re as _re
+    from pathlib import Path as _Path
+
+    from fastapi.responses import StreamingResponse
+
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT stored_path FROM recordings WHERE id=?", (rec_id,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "recording not found")
+    p = _Path(row["stored_path"])
+    if not p.exists():
+        raise HTTPException(404, "audio file missing")
+    mime = {
+        ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
+        ".mp4": "audio/mp4", ".ogg": "audio/ogg", ".flac": "audio/flac",
+        ".aac": "audio/aac", ".webm": "audio/webm",
+    }.get(p.suffix.lower(), "application/octet-stream")
+    size = p.stat().st_size
+    rng = request.headers.get("range")
+    if rng:
+        m = _re.match(r"bytes=(\d*)-(\d*)", rng)
+        if m:
+            start = int(m.group(1) or 0)
+            end = int(m.group(2)) if m.group(2) else size - 1
+            end = min(end, size - 1)
+            if start > end or start >= size:
+                raise HTTPException(416, "invalid range")
+            def _iter():
+                with open(p, "rb") as f:
+                    f.seek(start)
+                    remaining = end - start + 1
+                    while remaining > 0:
+                        chunk = f.read(min(65536, remaining))
+                        if not chunk:
+                            break
+                        remaining -= len(chunk)
+                        yield chunk
+            return StreamingResponse(
+                _iter(), status_code=206, media_type=mime,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(end - start + 1),
+                },
+            )
+    return FileResponse(p, media_type=mime, headers={"Accept-Ranges": "bytes"})
 
 
 @app.get("/api/recordings/{rec_id}/export")
