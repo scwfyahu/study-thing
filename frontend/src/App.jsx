@@ -127,6 +127,18 @@ export default function App() {
             {proc.recordings > 0 && ` ${proc.recordings} recording${proc.recordings > 1 ? "s" : ""}`}
             {proc.decks > 0 && ` · ${proc.decks} deck${proc.decks > 1 ? "s" : ""}`}
             {proc.tests_waiting > 0 && ` · ${proc.tests_waiting} test${proc.tests_waiting > 1 ? "s" : ""} awaiting scope`}
+            <button
+              className="btn small"
+              style={{ marginLeft: "auto" }}
+              onClick={async () => {
+                const ok = await askConfirm("Stop all jobs? Queued recordings stay as files but won't be processed until you re-process them.");
+                if (!ok) return;
+                try {
+                  await fetch("/api/jobs/stop", { method: "POST" });
+                } catch {}
+                try { setProc(await fetch("/api/processing").then((r) => r.json())); } catch {}
+              }}
+            >Stop all</button>
           </div>
         )}
         {error && <div className="banner error">{error}</div>}

@@ -66,6 +66,13 @@ def processing_status():
             "busy": (rec + decks) > 0}
 
 
+@app.post("/api/jobs/stop")
+def stop_all_jobs():
+    """Stop all queued/in-flight pipeline jobs (recordings + deck generation)."""
+    result = pipeline.stop_all_jobs()
+    return result
+
+
 @app.get("/api/llm/status")
 def llm_status():
     from . import llm
@@ -439,6 +446,11 @@ def reprocess_recording(rec_id: int, background_tasks: BackgroundTasks):
             raise HTTPException(404, "recording not found")
         conn.execute("DELETE FROM cards WHERE recording_id=?", (rec_id,))
         conn.execute("DELETE FROM chunks WHERE recording_id=?", (rec_id,))
+        conn.execute(
+            "UPDATE recordings SET status='queued', progress=0, note=NULL, error=NULL "
+            "WHERE id=?", (rec_id,)
+        )
+        conn.commit()
     background_tasks.add_task(pipeline.process_recording, rec_id)
     return {"id": rec_id, "status": "queued"}
 

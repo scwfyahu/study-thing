@@ -50,6 +50,43 @@ Rules:
 - If the chunk contains no meaningful lecture content, return {"cards": []}."""
 
 
+class PipelineStopped(Exception):
+    """Raised inside process_recording when the user stops all jobs."""
+
+
+_ACTIVE_STATUSES = ("queued", "denoising", "splitting", "transcribing",
+                    "reading", "extracting", "classifying")
+
+
+def _check_stop(recording_id: int) -> None:
+    """Abort points between stages: a 'stopped' row means the user hit Stop all."""
+    with db.get_conn() as conn:
+        row = conn.execute("SELECT status FROM recordings WHERE id=?", (recording_id,)).fetchone()
+    if row is not None and row["status"] == "stopped":
+        raise PipelineStopped()
+
+
+def stop_all_jobs() -> dict:
+    """User-initiated Stop all: mark every active recording + generating deck stopped.
+
+    In-flight jobs notice at their next stage boundary / progress tick and abort
+    cleanly (whisper.cpp windows are short, so worst-case latency is ~1 min).
+    """
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE recordings SET status='stopped', note='Stopped by user', "
+            "error=NULL WHERE status IN (?,?,?,?,?,?,?)",
+            _ACTIVE_STATUSES,
+        )
+        recs = cur.rowcount
+        cur2 = conn.execute(
+            "UPDATE decks SET status='stopped', error='Stopped by user' "
+            "WHERE status='generating'"
+        )
+        conn.commit()
+    return {"stopped_recordings": recs, "stopped_decks": cur2.rowcount}
+
+
 def _set(recording_id: int, **fields) -> None:
     cols = ", ".join(f"{k}=?" for k in fields)
     with db.get_conn() as conn:
@@ -353,17 +390,22 @@ def process_recording(recording_id: int) -> None:
             ).fetchone()
         if rec is None:
             return
+        if rec["status"] == "stopped":  # user hit Stop all before this job started
+            return
         work_dir = AUDIO_DIR / f"work_{recording_id}"
         try:
             if rec["kind"] == "notes":
                 _process_notes(recording_id, rec)
                 return
             work_dir.mkdir(parents=True, exist_ok=True)
+            _check_stop(recording_id)
             _set(recording_id, status="denoising", progress=0.02, error=None)
             wav, duration = prepare_audio(rec["stored_path"], work_dir)
+            _check_stop(recording_id)
             _set(recording_id, duration_sec=duration, status="transcribing",
                  progress=0.1)
             def _prog(done, total):
+                _check_stop(recording_id)
                 if total:
                     _set(recording_id, progress=round(0.1 + 0.8 * (done / max(total, 1)), 3),
                          note=f"Transcribing… ({done}/{total})")
@@ -371,6 +413,7 @@ def process_recording(recording_id: int) -> None:
                     _set(recording_id, progress=round(0.1 + 0.8 * min(done * 0.01, 1), 3),
                          note=f"Transcribing… ({done} segments)")
             text, segments = _transcribe_chunk(wav, _prog)  # whole recording, one pass
+            _check_stop(recording_id)
             _set(recording_id, duration_sec=duration, progress=0.9,
                  note="Finalizing transcript…")
             text = store_transcript(recording_id, segments)  # timestamped segments
@@ -380,6 +423,7 @@ def process_recording(recording_id: int) -> None:
                      note="No clear speech found — the recording may be too noisy or empty.")
                 return
 
+            _check_stop(recording_id)
             if rec["notebook_id"] is None:
                 # inbox -> classify + escrow, wait for human assignment
                 _classify_and_escrow(recording_id, text)
@@ -387,6 +431,9 @@ def process_recording(recording_id: int) -> None:
                 _scan_tests(recording_id, rec["notebook_id"])
                 _set(recording_id, status="done", progress=1.0,
                      note="Transcribed — flashcards generate from a test's scope.")
+        except PipelineStopped:
+            # status already 'stopped' — keep it, just clean up
+            pass
         except Exception as e:  # noqa: BLE001 — surface any failure on the recording row
             _set(recording_id, status="error", error=str(e)[:800])
         finally:
