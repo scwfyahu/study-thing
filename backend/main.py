@@ -49,6 +49,45 @@ app.add_middleware(
 app.include_router(tunnel_router)
 
 
+@app.get("/api/home")
+def home_dashboard():
+    """One aggregate payload for the home dashboard."""
+    import datetime as _dt
+
+    with db.get_conn() as conn:
+        nb_count = conn.execute("SELECT COUNT(*) n FROM notebooks").fetchone()["n"]
+        rec_total = conn.execute("SELECT COUNT(*) n FROM recordings").fetchone()["n"]
+        card_total = conn.execute("SELECT COUNT(*) n FROM cards").fetchone()["n"]
+        deck_total = conn.execute("SELECT COUNT(*) n FROM decks").fetchone()["n"]
+        quiz_total = conn.execute("SELECT COUNT(*) n FROM quizzes").fetchone()["n"]
+        inbox = conn.execute(
+            "SELECT COUNT(*) n FROM recordings WHERE notebook_id IS NULL "
+            "AND status='unclassified'").fetchone()["n"]
+        active = conn.execute(
+            "SELECT COUNT(*) n FROM recordings WHERE status IN"
+            " ('queued','denoising','splitting','transcribing','reading','classifying')"
+        ).fetchone()["n"]
+        recent = conn.execute(
+            "SELECT r.id, r.original_name, r.status, r.note, r.progress, r.kind,"
+            " COALESCE(r.recorded_at, r.created_at) AS when_txt, n.name AS nb_name, n.id AS nb_id"
+            " FROM recordings r LEFT JOIN notebooks n ON n.id = r.notebook_id"
+            " ORDER BY r.created_at DESC LIMIT 6").fetchall()
+        today = _dt.date.today().isoformat()
+        tests = conn.execute(
+            "SELECT t.id, t.title, t.date_iso AS test_date, t.confirmed, n.name AS nb_name, n.id AS nb_id"
+            " FROM tests t JOIN notebooks n ON n.id = t.notebook_id"
+            " WHERE t.date_iso >= ? OR (t.date_iso IS NULL AND t.confirmed=0)"
+            " ORDER BY CASE WHEN t.date_iso IS NULL THEN 1 ELSE 0 END, t.date_iso LIMIT 6",
+            (today,)).fetchall()
+    return {
+        "totals": {"notebooks": nb_count, "recordings": rec_total,
+                   "cards": card_total, "decks": deck_total,
+                   "quizzes": quiz_total, "inbox": inbox, "active": active},
+        "recent": [dict(r) for r in recent],
+        "tests": [dict(t) for t in tests],
+    }
+
+
 @app.get("/api/processing")
 def processing_status():
     with db.get_conn() as conn:

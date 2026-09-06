@@ -511,6 +511,33 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .transcript-ts { color: var(--color-accent); font-family: var(--font-mono); font-size: 0.6875rem; min-width: 46px; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .transcript-txt { font-size: var(--text-sm); line-height: 1.55; color: var(--color-graphite-2); font-family: var(--font-body); }
 
+/* ============================ home dashboard ============================ */
+.stat-row { display: flex; gap: var(--space-2xs); flex-wrap: wrap; margin-bottom: var(--space-sm); }
+.stat {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  background: transparent; border: 1px solid var(--color-rule); border-radius: var(--radius-card);
+  padding: var(--space-2xs) var(--space-sm); cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out);
+}
+.stat:hover { border-color: var(--color-accent); }
+.stat-n { font-family: var(--font-display); font-weight: 600; font-size: 1.375rem; color: var(--color-ink); font-variant-numeric: tabular-nums; }
+.stat-label { font-family: var(--font-mono); font-size: 0.5625rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-muted); }
+.home-callout {
+  border: 1px solid var(--color-accent); border-radius: var(--radius-card);
+  padding: var(--space-2xs) var(--space-sm); margin-bottom: var(--space-sm);
+  color: var(--color-ink); cursor: pointer; font-size: var(--text-md);
+}
+.home-callout:hover { background: var(--color-paper-2); }
+.home-callout-n { font-family: var(--font-display); font-weight: 600; color: var(--color-accent); }
+.home-section { border-top: 1px solid var(--color-rule); padding: var(--space-2xs) 0 var(--space-2xs); margin-top: var(--space-2xs); }
+.home-sec-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2xs); margin-bottom: var(--space-2xs); }
+.home-list { display: flex; flex-direction: column; }
+.home-row { display: flex; align-items: center; gap: var(--space-2xs); padding: var(--space-3xs) var(--space-3xs); border-bottom: 1px solid var(--color-rule); min-width: 0; }
+.home-row:last-child { border-bottom: 0; }
+.home-row:hover { background: var(--color-paper-2); }
+.home-row-name { font-weight: 500; color: var(--color-ink); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.home-row-name:hover { color: var(--color-accent); }
+
 /* ============================ responsive ============================ */
 @media (max-width: 768px) {
   .layout { flex-direction: column; }

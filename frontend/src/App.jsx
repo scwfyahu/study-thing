@@ -6,6 +6,7 @@ import ScheduleView from "./components/ScheduleView.jsx";
 import SharePanel from "./components/SharePanel.jsx";
 import StudyView from "./components/StudyView.jsx";
 import SuggestView from "./components/SuggestView.jsx";
+import HomeView from "./components/HomeView.jsx";
 import { askConfirm } from "./confirm.js";
 
 export default function App() {
@@ -174,11 +175,12 @@ export default function App() {
             onEditFocus={(nb) => setModal({ mode: "edit", nb })}
           />
         ) : (
-          <div className="empty">
-            <h2>Your classes, distilled to flashcards.</h2>
-            <p>Create a notebook for each class, then drop in your lecture recordings.</p>
-            <p className="hint">Noise gets cleaned (ffmpeg) → transcribed locally (whisper.cpp) → turned into flashcards (LLM).</p>
-          </div>
+          <HomeView
+            onOpenNotebook={(id) => { setCurrentId(id); setViewSuggest(false); setViewSchedule(false); }}
+            onOpenSuggest={() => { setViewSuggest(true); setViewSchedule(false); setCurrentId(null); }}
+            onOpenSchedule={() => { setViewSchedule(true); setViewSuggest(false); setCurrentId(null); }}
+            onNewNotebook={() => setModal({ mode: "create" })}
+          />
         )}
         {modal && (
           <NotebookModal

@@ -7,7 +7,7 @@ import FocusView from "./FocusView.jsx";
 import TranscriptModal from "./TranscriptModal.jsx";
 import { askConfirm } from "../confirm.js";
 
-const STATUS_LABEL = {
+export const STATUS_LABEL = {
   queued: "Queued",
   denoising: "Cleaning audio",
   splitting: "Splitting",
