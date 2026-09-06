@@ -52,7 +52,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
   const assign = async (id, nbId) => {
     if (!nbId) return alert("Pick a notebook first.");
     try { await api.assign(id, Number(nbId)); } catch (e) { return alert(e.message); }
-    onOpenNotebook(Number(nbId));
+    // stay in the Suggest inbox — no navigation on assign
     load();
   };
 
