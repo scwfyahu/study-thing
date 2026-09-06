@@ -25,12 +25,12 @@
   --color-bad:        oklch(52% 0.17 25);
 
   /* spacing — 4pt scale */
-  --space-3xs: 0.25rem; --space-2xs: 0.5rem; --space-xs: 0.75rem;
-  --space-sm: 1rem;     --space-md: 1.5rem;  --space-lg: 2rem;
+  --space-3xs: 0.25rem; --space-2xs: 0.4rem; --space-xs: 0.625rem;
+  --space-sm: 0.875rem; --space-md: 1.125rem; --space-lg: 1.5rem;
 
   /* type scale */
-  --text-xs: 0.75rem; --text-sm: 0.8125rem; --text-md: 0.875rem;
-  --text-lg: 1rem;    --text-xl: 1.25rem;   --text-2xl: 1.5rem;
+  --text-xs: 0.6875rem; --text-sm: 0.75rem; --text-md: 0.8125rem;
+  --text-lg: 0.9375rem; --text-xl: 1.125rem; --text-2xl: 1.3125rem;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur: 160ms;
@@ -80,12 +80,12 @@ body {
   margin: 0;
   background: var(--color-paper);
   color: var(--color-ink-2);
-  font: 400 var(--text-md)/1.5 var(--font-body);
+  font: 400 var(--text-md)/1.45 var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 button { font: inherit; cursor: pointer; }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; font-family: var(--font-display); font-style: normal; letter-spacing: -0.01em; color: var(--color-ink); }
-h1 { font-size: 1.375rem; }
+h1 { font-size: 1.1875rem; }
 h2 { font-size: var(--text-2xl); line-height: 1.25; }
 h3 { font-size: var(--text-lg); }
 h4 { font-size: 0.6875rem; font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-muted); }
@@ -96,16 +96,16 @@ a { color: var(--color-ink); text-decoration: none; }
 
 /* ============================ side-rail ============================ */
 .sidebar {
-  width: 236px; flex: 0 0 auto;
+  width: 212px; flex: 0 0 auto;
   background: var(--color-paper-2);
   border-right: 1px solid var(--color-rule);
   display: flex; flex-direction: column;
   padding: var(--space-2xs) var(--space-2xs) var(--space-xs);
 }
 .brand {
-  font-family: var(--font-display); font-weight: 600; font-size: 1.125rem;
+  font-family: var(--font-display); font-weight: 600; font-size: 1rem;
   letter-spacing: -0.01em; color: var(--color-ink);
-  padding: var(--space-sm) var(--space-xs) var(--space-xs);
+  padding: var(--space-2xs) var(--space-3xs) var(--space-xs);
   border-bottom: 1px solid var(--color-rule);
   margin-bottom: var(--space-2xs);
 }
@@ -113,7 +113,7 @@ a { color: var(--color-ink); text-decoration: none; }
 .nb-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
 .nb-item {
   position: relative;
-  padding: var(--space-2xs) var(--space-xs) var(--space-2xs) calc(var(--space-xs) + 8px);
+  padding: var(--space-2xs) var(--space-3xs) var(--space-2xs) calc(var(--space-2xs) + 6px);
   color: var(--color-ink-2); cursor: pointer;
   border-left: 2px solid transparent;
   transition: background var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
@@ -159,7 +159,7 @@ a { color: var(--color-ink); text-decoration: none; }
 .empty .hint { font-size: var(--text-sm); }
 .loading, .muted { color: var(--color-muted); }
 
-.nb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2xs); margin-bottom: var(--space-md); flex-wrap: wrap; border-bottom: 1px solid var(--color-rule); padding-bottom: var(--space-sm); }
+.nb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2xs); margin-bottom: var(--space-sm); flex-wrap: wrap; border-bottom: 1px solid var(--color-rule); padding-bottom: var(--space-2xs); }
 .nb-actions { display: flex; gap: var(--space-2xs); flex-wrap: wrap; align-items: center; }
 .topics-line { font-size: var(--text-sm); color: var(--color-muted); margin-top: var(--space-3xs); max-width: 560px; white-space: pre-line; }
 
@@ -168,7 +168,7 @@ a { color: var(--color-ink); text-decoration: none; }
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   background: transparent; color: var(--color-ink);
   border: 1px solid var(--color-rule-2); border-radius: var(--radius-control);
-  padding: 6px 14px; font-weight: 500; font-size: var(--text-sm); text-decoration: none;
+  padding: 5px 11px; font-weight: 500; font-size: var(--text-sm); text-decoration: none;
   white-space: nowrap;
   transition: border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
@@ -184,7 +184,7 @@ button.primary, .primary {
 button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-color: oklch(52% 0.2 256); }
 .btn.good { color: var(--color-ink); }
 .btn.good:hover { border-color: var(--color-accent); color: var(--color-accent); }
-.btn.small { padding: 3px 10px; font-size: var(--text-xs); }
+.btn.small { padding: 2px 8px; font-size: var(--text-xs); }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn.rate { min-width: 82px; }
 .btn.rate.bad { color: var(--color-bad); }
@@ -220,9 +220,9 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .spacer { flex: 0 0 0; }
 
 .badge {
-  font-family: var(--font-mono); font-size: 0.625rem; line-height: 1; font-weight: 500;
+  font-family: var(--font-mono); font-size: 0.5625rem; line-height: 1; font-weight: 500;
   letter-spacing: 0.06em; text-transform: uppercase;
-  padding: 5px 9px; border-radius: var(--radius-input);
+  padding: 4px 7px; border-radius: var(--radius-input);
   background: transparent; color: var(--color-muted); border: 1px solid var(--color-rule-2);
   white-space: nowrap;
 }
@@ -271,7 +271,7 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 /* ============================ study ============================ */
 .study-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2xs); margin-bottom: var(--space-sm); }
 .study-card {
-  min-height: 240px;
+  min-height: 200px;
   background: var(--color-paper);
   border: 1px solid var(--color-rule-2); border-radius: var(--radius-card);
   display: flex; align-items: center; justify-content: center;
@@ -302,7 +302,7 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .modal {
   background: var(--color-paper); color: var(--color-ink-2);
   border: 1px solid var(--color-rule-2); border-radius: var(--radius-card);
-  padding: var(--space-sm) var(--space-md); width: 470px; max-width: 92vw; max-height: 90vh;
+  padding: var(--space-xs) var(--space-sm); width: 470px; max-width: 92vw; max-height: 90vh;
   display: flex; flex-direction: column; gap: 2px;
   box-shadow: 0 1px 2px oklch(24% 0.02 258 / 0.08);
 }
@@ -320,7 +320,7 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--space-3xs); margin-top: var(--space-sm); }
 
 /* ============================ sections (hairline-ruled) ============================ */
-.rev-section { border: 0; border-top: 1px solid var(--color-rule); padding: var(--space-sm) 0 var(--space-sm); margin-top: var(--space-sm); }
+.rev-section { border: 0; border-top: 1px solid var(--color-rule); padding: var(--space-2xs) 0 var(--space-2xs); margin-top: var(--space-2xs); }
 .rev-bar { display: flex; align-items: center; gap: var(--space-2xs); margin-bottom: var(--space-2xs); }
 .rev-bar h4 { flex: 1; color: var(--color-ink); font-size: 0.6875rem; }
 .rev-bar h4 .muted { color: var(--color-muted); text-transform: none; letter-spacing: 0; font-family: var(--font-body); }
@@ -465,7 +465,7 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .focus-topic > summary::before { content: "▸"; color: var(--color-muted); font-size: 0.625rem; }
 .focus-topic[open] > summary::before { content: "▾"; }
 .focus-name { font-weight: 500; font-size: var(--text-md); color: var(--color-ink); }
-.focus-body { padding: var(--space-3xs) var(--space-3xs) var(--space-xs) 22px; }
+.focus-body { padding: var(--space-3xs) var(--space-3xs) var(--space-2xs) 22px; }
 .focus-meta { display: flex; align-items: center; gap: var(--space-2xs); margin-bottom: var(--space-3xs); font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.04em; }
 .focus-stars { color: var(--color-accent); letter-spacing: 1px; font-size: 0.6875rem; }
 .focus-stars-dim { color: var(--color-rule-2); }
