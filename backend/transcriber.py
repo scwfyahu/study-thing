@@ -23,7 +23,7 @@ def transcribe(path, model: str = WHISPER_MODEL, language: str = WHISPER_LANGUAG
     if ASR_BACKEND == "mlx":
         return _mlx(path, model, language, progress_cb)
     if ASR_BACKEND == "whisper.cpp":
-        return _whisper_cpp(path, model, language)
+        return _whisper_cpp(path, model, language, progress_cb)
     return _faster_whisper(path, model, language, progress_cb)
 
 _CHUNK_SEC = 600  # transcribe window: long enough to avoid boundary drift, small
@@ -100,10 +100,21 @@ def _faster_whisper(path, model, language, progress_cb=None) -> dict:
     text = " ".join(x["text"] for x in segs).strip()
     return {"text": text, "segments": segs}
 
-def _whisper_cpp(path, model, language) -> dict:
-    """Local whisper.cpp (Vulkan) — the AMD/Intel GPU path on Windows."""
+def _whisper_cpp(path, model, language, progress_cb=None) -> dict:
+    """whisper.cpp (Metal on macOS, Vulkan on Windows) — fastest local path.
+
+    Benchmarked vs MLX on M5 (120s slice, large-v3-turbo):
+      whisper.cpp q5_0 Metal  6.0s  (20x realtime)
+      MLX bf16 turbo         18.7s  (6.4x)
+      MLX q4 turbo           38.9s  (3.1x)
+    Transcript quality identical. Chunked into _CHUNK_SEC windows for live progress;
+    -oj JSON gives per-segment timestamps.
+    """
+    import json
+    import os
     import shutil
     import subprocess
+    import tempfile
     from pathlib import Path
 
     from .config import WHISPERCPP_BIN, WHISPERCPP_MODEL
@@ -124,12 +135,60 @@ def _whisper_cpp(path, model, language) -> dict:
             f"whisper.cpp model not found at {model_path}. "
             "Run setup.ps1 (downloads ggml-large-v3-turbo-q5_1) or set STUDY_WHISPERCPP_MODEL."
         )
-    cmd = [str(bin_path), "-m", str(model_path), "-f", str(path), "-nt", "-np"]
-    if language and language.lower() != "auto":
-        cmd += ["-l", language]
-    p = subprocess.run(cmd, capture_output=True, text=True, timeout=14400)
-    if p.returncode != 0:
-        raise RuntimeError(f"whisper-cli failed: {p.stderr[-500:]}")
-    text = " ".join(p.stdout.split()).strip()
-    # whisper.cpp text mode has no per-segment timestamps; store as one segment
-    return {"text": text, "segments": [{"start": 0, "end": 0, "text": text}] if text else []}
+
+    # decode source once to 16k mono wav (whisper-cli decodes wav natively)
+    tmpdir = tempfile.mkdtemp(prefix="stasr_")
+    wav = os.path.join(tmpdir, "full.wav")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", str(path), "-ar", "16000", "-ac", "1", wav],
+        check=True, capture_output=True,
+    )
+
+    # chunk count from wav duration (16k mono => len/32000 s)
+    wav_size = os.path.getsize(wav)
+    total_sec = wav_size / 32000.0
+    nwin = max(1, -(-int(total_sec) // _CHUNK_SEC))
+
+    segs = []
+    for i in range(nwin):
+        ss = i * _CHUNK_SEC
+        piece = os.path.join(tmpdir, f"chunk{i}.wav")
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", str(ss), "-t", str(_CHUNK_SEC), "-i", wav, piece],
+            check=True, capture_output=True,
+        )
+        cmd = [str(bin_path), "-m", str(model_path), "-f", piece, "-nt", "-oj", "-of", piece, "-np"]
+        if language and language.lower() != "auto":
+            cmd += ["-l", language]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=14400)
+        if p.returncode != 0:
+            raise RuntimeError(f"whisper-cli failed: {p.stderr[-500:]}")
+        jpath = piece + ".json"
+        if os.path.exists(jpath):
+            with open(jpath) as f:
+                data = json.load(f)
+            for s in (data.get("transcription") or []):
+                t = (s.get("text") or "").strip()
+                if not t:
+                    continue
+                # whisper.cpp json timestamps are ms strings like "1234"
+                try:
+                    start = float(s.get("offsets", {}).get("from", 0)) / 1000.0
+                    end = float(s.get("offsets", {}).get("to", 0)) / 1000.0
+                except (TypeError, ValueError):
+                    start = end = 0.0
+                segs.append({"start": start + ss, "end": end + ss, "text": t})
+            os.remove(jpath)
+        else:  # fall back to text-only chunk
+            txt = " ".join(p.stdout.split()).strip()
+            if txt:
+                segs.append({"start": float(ss), "end": float(ss) + _CHUNK_SEC, "text": txt})
+        if progress_cb:
+            try:
+                progress_cb(i + 1, nwin)
+            except Exception:
+                pass
+
+    shutil.rmtree(tmpdir, ignore_errors=True)
+    text = " ".join(x["text"] for x in segs).strip()
+    return {"text": text, "segments": segs}
