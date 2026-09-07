@@ -16,7 +16,6 @@ jobs:
         with: { python-version: "3.11" }
       - name: Build frontend + exe + bundle
         run: powershell -ExecutionPolicy Bypass -File windows/build.ps1
-        working-directory: windows
       - uses: actions/upload-artifact@v4
         with:
           name: StudyThing-windows
