@@ -71,6 +71,20 @@ def _profiles(conn) -> list[dict]:
     return out
 
 
+def _resolve_id(nid, notebooks: list[dict]) -> int | None:
+    """Guard: coerce type (models often return "12" instead of 12), then
+    drop ids that aren't ours; 0 = no match."""
+    if nid is None:
+        return None
+    try:
+        nid = int(nid)
+    except (TypeError, ValueError):
+        return None
+    if nid == 0 or not any(p["id"] == nid for p in notebooks):
+        return None
+    return nid
+
+
 def classify(text: str, notebooks: list[dict] | None = None) -> dict:
     """Suggest the best notebook for a transcript. Never files anything.
 
@@ -112,16 +126,7 @@ def classify(text: str, notebooks: list[dict] | None = None) -> dict:
                 f"Transcript sample (may be mid-lecture):\n{sample}"
             )},
         ])
-        nid = res.get("notebook_id")
-        # guard: coerce type (models often return "12" instead of 12), then
-        # drop ids that aren't ours; 0 = no match
-        if nid is not None:
-            try:
-                nid = int(nid)
-            except (TypeError, ValueError):
-                nid = None
-        if nid is not None and (nid == 0 or not any(p["id"] == nid for p in notebooks)):
-            nid = None
+        nid = _resolve_id(res.get("notebook_id"), notebooks)
         try:
             conf = min(1.0, max(0.0, float(res.get("confidence", 0.0))))
         except (TypeError, ValueError):
