@@ -17,11 +17,16 @@ logger = logging.getLogger(__name__)
 
 NOTES_EXT = {".png", ".jpg", ".jpeg", ".webp", ".heic", ".pdf"}
 
-VISION_PROMPT = (
-    "Transcribe ALL text on this slide/page verbatim, preserving reading "
-    "order and list structure. Include titles, headers, bullets, table "
-    "contents, captions, and any handwritten annotations. Output plain "
-    "text only — no commentary, no markdown headings."
+OUTLINE_PROMPT = (
+    "This is one page of a lesson slide deck (or handwritten notes). Read it and "
+    "return a DETAILED OUTLINE fragment for that page — not a transcription. "
+    "Rules: keep every factual detail (terms, definitions, processes, formulas, "
+    "numbers, examples); condense everything else; organize as a hierarchical "
+    "outline with the page's section title as heading and nested bullets "
+    "(indent with two spaces per level); write definitions and lists out fully "
+    "but never repeat slide decoration, headers/footers, or page numbers; "
+    "include handwritten annotations only if they add lesson content; output "
+    "plain text only — no commentary, no markdown code fences."
 )
 
 
@@ -54,7 +59,7 @@ def vision_read(path: str) -> str:
         content = [
             {"type": "text", "text": (
                 (f"Page {i} of {len(images)}. " if len(images) > 1 else "")
-                + VISION_PROMPT)},
+                + OUTLINE_PROMPT)},
             {"type": "image_url",
              "image_url": {"url": f"data:{mime};base64,{b64}"}},
         ]
