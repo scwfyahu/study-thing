@@ -56,7 +56,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
   const openRecTranscript = async (r) => {
     try {
       const t = await api.transcript(r.id);
-      setTranscriptModal({ title: `Transcript — ${r.original_name}`, data: { recordings: [{ id: r.id, name: r.original_name, duration_sec: r.duration_sec, chunks: t.chunks }] } });
+      setTranscriptModal({ title: `${r.kind === "notes" ? "Outline" : "Transcript"} — ${r.original_name}`, data: { recordings: [{ id: r.id, name: r.original_name, duration_sec: r.duration_sec, chunks: t.chunks }] } });
     } catch (e) { alert(e.message); }
   };
 
@@ -544,6 +544,9 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
           <a className="btn small" href={`/api/recordings/${r.id}/file`} target="_blank" rel="noreferrer">View</a>
         )}
         <a className="btn small" href={`/api/recordings/${r.id}/file?dl=1`}>Download</a>
+        {r.kind === "notes" && r.status === "done" && (
+          <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Outline</button>
+        )}
         {r.kind !== "notes" && r.status === "done" && (
           <>
             <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
@@ -552,8 +555,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=csv`}>CSV</a>
           </>
         )}
-        {r.kind === "notes" && r.status === "done" && (
-          <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
+        {}
         )}
         {r.kind !== "notes" && (
         <select
