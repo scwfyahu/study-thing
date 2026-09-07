@@ -540,7 +540,11 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
         {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
         <span className="spacer" />
         {r.kind !== "notes" && <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>}
-        {r.status === "done" && (
+        {r.kind === "notes" && r.status === "done" && (
+          <a className="btn small" href={`/api/recordings/${r.id}/file`} target="_blank" rel="noreferrer">View</a>
+        )}
+        <a className="btn small" href={`/api/recordings/${r.id}/file?dl=1`}>Download</a>
+        {r.kind !== "notes" && r.status === "done" && (
           <>
             <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
             <button className="btn small" onClick={reprocess}>↻ Re-process</button>
@@ -548,6 +552,10 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
             <a className="btn small" href={`/api/recordings/${r.id}/export?format=csv`}>CSV</a>
           </>
         )}
+        {r.kind === "notes" && r.status === "done" && (
+          <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
+        )}
+        {r.kind !== "notes" && (
         <select
           className="move-select"
           value={r.notebook_id}
@@ -558,6 +566,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
             <option key={n.id} value={n.id}>{n.name}</option>
           ))}
         </select>
+        )}
         <button className="icon-del" onClick={del} title="Delete recording">✕</button>
       </div>
       {active && (

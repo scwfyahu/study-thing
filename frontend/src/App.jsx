@@ -88,7 +88,8 @@ export default function App() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h1 className="brand">Study<span>Thing</span></h1>
+        <h1 className="brand" style={{cursor:"pointer"}} title="Home"
+            onClick={() => { setViewSuggest(false); setViewSchedule(false); setCurrentId(null); setStudy(null); }}>Study<span>Thing</span></h1>
         <nav className="nb-list">
           <div className="side-h">Inbox</div>
           <div

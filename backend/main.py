@@ -599,6 +599,29 @@ def recording_cards(rec_id: int):
     return [dict(r) for r in rows]
 
 
+@app.get("/api/recordings/{rec_id}/file")
+def recording_file(rec_id: int, dl: int = 0):
+    """Serve the original upload (inline for view, attachment when dl=1)."""
+    import mimetypes
+
+    with db.get_conn() as conn:
+        row = conn.execute("SELECT stored_path, original_name FROM recordings WHERE id=?", (rec_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "recording not found")
+    p = Path(row["stored_path"])
+    if not p.is_absolute():
+        p = AUDIO_DIR / p
+    if not p.exists():
+        raise HTTPException(404, "file missing on disk")
+    mime = mimetypes.guess_type(row["original_name"])[0] or "application/octet-stream"
+    return FileResponse(
+        p,
+        media_type=mime,
+        filename=row["original_name"] if dl else None,
+        content_disposition_type="attachment" if dl else "inline",
+    )
+
+
 @app.get("/api/recordings/{rec_id}/transcript")
 def recording_transcript(rec_id: int):
     with db.get_conn() as conn:
