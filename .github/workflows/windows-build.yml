@@ -1,0 +1,28 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Build frontend + exe + bundle
+        run: powershell -ExecutionPolicy Bypass -File windows/build.ps1
+        working-directory: windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyThing-windows
+          path: StudyThing-windows.zip
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: StudyThing-windows.zip

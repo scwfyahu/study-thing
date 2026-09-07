@@ -1,0 +1,72 @@
+# Build StudyThing-windows.zip: exe + bundled ffmpeg + whisper.cpp + model.
+# Runs on Windows (CI or a friend's machine with git + python 3.11 + node 20).
+param(
+  [switch]$SkipFrontend,   # frontend/dist already built
+  [switch]$SkipPyInstaller # StudyThing.exe already built, just repack
+)
+$ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
+
+# ---------- 1. frontend ----------
+if (-not $SkipFrontend) {
+  Push-Location ..\frontend
+  npm install --no-audit --no-fund
+  npm run build
+  Pop-Location
+}
+if (-not (Test-Path ..\frontend\dist\index.html)) { Write-Error "frontend/dist missing"; exit 1 }
+
+# ---------- 2. python deps + pyinstaller ----------
+Push-Location ..
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r requirements.txt
+python -m pip install --quiet pyinstaller
+Pop-Location
+
+# ---------- 3. pyinstaller exe ----------
+if (-not $SkipPyInstaller) {
+  Push-Location ..
+  python -m PyInstaller --clean --noconfirm windows\studything.spec
+  Pop-Location
+}
+if (-not (Test-Path ..\dist\StudyThing.exe)) { Write-Error "StudyThing.exe not built"; exit 1 }
+
+# ---------- 4. bundle dir ----------
+$out = "bundle"
+if (Test-Path $out) { Remove-Item -Recurse -Force $out }
+New-Item -ItemType Directory -Force -Path "$out\bin" | Out-Null
+Copy-Item ..\dist\StudyThing.exe "$out\StudyThing.exe"
+Copy-Item "START-HERE.txt" "$out\START-HERE.txt"
+
+Write-Host "==> ffmpeg (static essentials)"
+if (-not (Test-Path "$out\bin\ffmpeg.exe")) {
+  Invoke-WebRequest "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ff.zip
+  Expand-Archive -Force ff.zip ff
+  $ffRoot = (Get-ChildItem ff -Directory | Select-Object -First 1).FullName
+  Copy-Item "$ffRoot\bin\ffmpeg.exe" "$out\bin\ffmpeg.exe"
+  Copy-Item "$ffRoot\bin\ffprobe.exe" "$out\bin\ffprobe.exe"
+  Remove-Item -Recurse -Force ff, ff.zip
+}
+
+Write-Host "==> whisper.cpp (Vulkan build + large-v3-turbo q5_0 model, ~550 MB)"
+if (-not (Test-Path "$out\bin\whisper-cli.exe")) {
+  Invoke-WebRequest "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip" -OutFile wc.zip
+  Expand-Archive -Force wc.zip wctmp
+  $cli = Get-ChildItem -Recurse -Filter "whisper-cli.exe" wctmp | Select-Object -First 1
+  Copy-Item $cli.FullName "$out\bin\whisper-cli.exe"
+  # bring any DLLs next to the exe
+  Get-ChildItem -Recurse -Include *.dll -Path (Split-Path $cli.FullName) | Copy-Item -Destination "$out\bin"
+  Remove-Item -Recurse -Force wctmp, wc.zip
+}
+if (-not (Test-Path "$out\bin\ggml-large-v3-turbo-q5_0.bin")) {
+  Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin" `
+    -OutFile "$out\bin\ggml-large-v3-turbo-q5_0.bin"
+}
+
+# ---------- 5. zip ----------
+$zipName = "..\StudyThing-windows.zip"
+if (Test-Path $zipName) { Remove-Item $zipName }
+Compress-Archive -Path "$out\*" -DestinationPath $zipName
+Remove-Item -Recurse -Force $out
+Write-Host ""
+Write-Host "DONE -> StudyThing-windows.zip"

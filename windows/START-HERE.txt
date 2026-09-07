@@ -1,0 +1,31 @@
+HOW TO START (no terminal needed)
+
+1. Unzip this folder anywhere (Desktop is fine).
+2. Double-click StudyThing.exe.
+3. Your browser opens the app. That's it.
+
+First brain setup — pick ONE:
+
+  OPTION A (private, recommended):
+    1. Install Ollama (free): https://ollama.com/download — double-click the installer.
+    2. After it installs, open the Ollama app once.
+    3. In the app or any terminal run:  ollama pull qwen3:8b
+       (one time, ~5 GB download)
+    Done. Everything runs on your PC, nothing leaves it.
+
+  OPTION B (cloud, faster on weak PCs):
+    1. Get a free key: https://openrouter.ai/keys
+    2. Open the ".env" file next to StudyThing.exe in Notepad.
+    3. Replace the line with:
+         OPENROUTER_API_KEY=sk-or-...yourkey...
+         STUDY_LLM_PROVIDER=openrouter
+         STUDY_OPENROUTER_MODEL=google/gemini-2.5-flash
+    4. Save. Restart StudyThing.exe.
+
+Notes:
+- Keep the black window open while using the app — closing it quits StudyThing.
+- Your recordings, notes and flashcards are stored in the "data" folder next to the exe.
+- First transcription of a recording uses the bundled Whisper model (already included,
+  nothing to download).
+- To update: download a newer StudyThing-windows.zip, replace everything EXCEPT the
+  "data" folder and your ".env" file.
