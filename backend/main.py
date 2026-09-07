@@ -235,7 +235,7 @@ def get_notebook(nb_id: int):
             raise HTTPException(404, "notebook not found")
         has_syllabus = bool((nb["syllabus"] or "").strip())
         recs = conn.execute(
-            """SELECT id, original_name, kind, status, progress, error, note, duration_sec,
+            """SELECT id, notebook_id, original_name, kind, status, progress, error, note, duration_sec,
                     recorded_at, created_at
                FROM recordings WHERE notebook_id=? ORDER BY COALESCE(recorded_at, created_at) DESC, id DESC""",
             (nb_id,),

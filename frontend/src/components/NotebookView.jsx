@@ -321,7 +321,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           </p>
         )}
         {srcRows.map((r) => (
-          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} notebooks={notebooks} onTranscript={openRecTranscript} />
+          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} nbId={nb.id} notebooks={notebooks} onTranscript={openRecTranscript} />
         ))}
       </section>
       </section>
@@ -508,7 +508,7 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
   );
 }
 
-function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }) {
+function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTranscript }) {
   const active = ACTIVE.has(r.status);
   const [listen, setListen] = useState(false);
 
@@ -551,23 +551,19 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
           <>
             <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
             <button className="btn small" onClick={reprocess}>↻ Re-process</button>
-            <a className="btn small" href={`/api/recordings/${r.id}/export?format=apkg`}>Anki</a>
-            <a className="btn small" href={`/api/recordings/${r.id}/export?format=csv`}>CSV</a>
           </>
         )}
-        {}
-        )}
         {r.kind !== "notes" && (
-        <select
+          <select
           className="move-select"
-          value={r.notebook_id}
+          value={r.notebook_id ?? nbId}
           onChange={(e) => move(e.target.value)}
           title="Assign to class notebook"
         >
           {(notebooks || []).map((n) => (
             <option key={n.id} value={n.id}>{n.name}</option>
           ))}
-        </select>
+          </select>
         )}
         <button className="icon-del" onClick={del} title="Delete recording">✕</button>
       </div>
