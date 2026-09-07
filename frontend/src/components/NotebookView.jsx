@@ -539,7 +539,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, notebooks, onTranscript }
         {r.duration_sec ? <span className="muted">{fmtDur(r.duration_sec)}</span> : null}
         {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
         <span className="spacer" />
-        <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>
+        {r.kind !== "notes" && <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>}
         {r.status === "done" && (
           <>
             <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>

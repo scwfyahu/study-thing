@@ -158,7 +158,7 @@ function BusyRow({ r }) {
         <span className={`badge s-${r.status}`}>{label}</span>
         {r.note && <span className="muted small-note">{r.note}</span>}
         <span className="spacer" />
-        <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>
+        {r.kind !== "notes" && <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>}
       </div>
       <div className="progress"><div className="bar" style={{ width: `${Math.round((r.progress || 0) * 100)}%` }} /></div>
       {listen && (
@@ -181,7 +181,7 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
       <div className="rec-top">
         <button className="rec-toggle" onClick={() => setOpen(!open)}>{open ? "▾" : "▸"}</button>
         <span className="rec-name">{r.original_name}</span>
-        <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>
+        {r.kind !== "notes" && <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>}
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className="badge s-unclassified">Waiting</span>
         {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
