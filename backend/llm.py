@@ -99,12 +99,37 @@ def chat(messages: list[dict], *, schema=None, num_ctx: int = 65536,
             return _ollama_chat(messages, schema, num_ctx, num_predict,
                                 temperature, timeout)
         except LLMUnavailable as e:
+            # cross-provider failover: if the primary is down and the other
+            # provider is up, use it instead of flapping on one endpoint.
+            other = "ollama" if provider() == "openrouter" else "openrouter"
+            if _other_available(other):
+                logger.warning("LLM primary down — failing over to %s", other)
+                if other == "ollama":
+                    return _ollama_chat(messages, schema, num_ctx, num_predict,
+                                        temperature, timeout)
+                return _openrouter_chat(messages, schema, temperature,
+                                        num_predict, timeout,
+                                        model_override=model_override)
             if max_attempts and attempt >= max_attempts:
                 raise e
             delay = min(2 ** attempt, 30)
             logger.warning("LLM down (attempt %d) — retrying in %ds",
                            attempt, delay)
             _time.sleep(delay)
+
+
+def _other_available(p: str) -> bool:
+    try:
+        if p == "ollama":
+            import requests
+            from .config import OLLAMA_URL
+            requests.get(f"{OLLAMA_URL}/api/tags", timeout=3).raise_for_status()
+            return True
+        _openrouter_chat([{"role": "user", "content": "ping"}],
+                         None, 0.0, 256, 30)
+        return True
+    except Exception:
+        return False
 
 
 def _ollama_chat(messages, schema, num_ctx, num_predict, temperature,

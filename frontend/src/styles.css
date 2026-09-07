@@ -520,6 +520,12 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .focus-stars-dim { color: var(--color-rule-2); }
 .focus-summary { margin: 0 0 var(--space-2xs); font-size: var(--text-sm); line-height: 1.55; color: var(--color-ink-2); }
 .focus-subs { display: flex; flex-wrap: wrap; gap: var(--space-3xs); margin-bottom: var(--space-3xs); }
+.focus-sec-h { font-family: var(--font-mono); font-size: 0.5625rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-muted); margin: var(--space-2xs) 0 var(--space-3xs); }
+.focus-terms dl { margin: 0; display: grid; grid-template-columns: minmax(120px, 200px) 1fr; gap: 4px var(--space-2xs); }
+.focus-term dt { font-weight: 600; color: var(--color-ink); font-size: var(--text-sm); }
+.focus-term dd { margin: 0; color: var(--color-ink-2); font-size: var(--text-sm); line-height: 1.5; }
+.focus-qs ul, .focus-mistakes ul { margin: 0; padding-left: 18px; color: var(--color-ink-2); font-size: var(--text-sm); line-height: 1.6; }
+.focus-mistakes ul { color: var(--color-bad); }
 .focus-chip {
   background: transparent; color: var(--color-ink-2);
   border: 1px solid var(--color-rule-2);

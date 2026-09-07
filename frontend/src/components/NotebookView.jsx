@@ -244,7 +244,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
               {autoFocusing ? "Extracting…" : "⟳ Auto-focus"}
             </button>
           )}
-          <button className="btn" onClick={() => editTopics()}>Focus</button>
+          <button className="btn" onClick={() => editTopics()} title="Edit the focus topic list and syllabus">✎ Edit focus</button>
           <button className="primary" onClick={startStudy}>
             ▶ Study{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}
           </button>

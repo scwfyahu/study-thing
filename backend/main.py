@@ -935,7 +935,15 @@ def auto_focus(nb_id: int, background_tasks: BackgroundTasks):
         if nb is None:
             raise HTTPException(404, "notebook not found")
     if not (nb["syllabus"] or "").strip():
-        raise HTTPException(400, "no syllabus stored for this notebook — upload one in Edit")
+        # focus can still be built from lesson outlines/transcripts alone
+        with db.get_conn() as conn:
+            has_lessons = conn.execute(
+                "SELECT 1 FROM chunks c JOIN recordings r ON r.id=c.recording_id"
+                " WHERE r.notebook_id=? LIMIT 1", (nb_id,)).fetchone()
+        if not has_lessons:
+            raise HTTPException(400, "no syllabus and no lesson content yet — upload one in Edit")
+        background_tasks.add_task(focus.generate, nb_id, "")
+        return {"ok": True, "generating": True}
     background_tasks.add_task(focus.generate, nb_id, nb["syllabus"])
     return {"ok": True, "generating": True}
 

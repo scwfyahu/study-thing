@@ -157,6 +157,13 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE recordings ADD COLUMN suggestion TEXT")
     if "recorded_at" not in rcols:
         conn.execute("ALTER TABLE recordings ADD COLUMN recorded_at TEXT")
+    fcols = {r[1] for r in conn.execute("PRAGMA table_info(focus_topics)")}
+    if "key_terms" not in fcols:
+        conn.execute("ALTER TABLE focus_topics ADD COLUMN key_terms TEXT")
+    if "exam_questions" not in fcols:
+        conn.execute("ALTER TABLE focus_topics ADD COLUMN exam_questions TEXT")
+    if "mistakes" not in fcols:
+        conn.execute("ALTER TABLE focus_topics ADD COLUMN mistakes TEXT")
     _drop_not_null_notebook_id(conn)
 
 
@@ -200,7 +207,6 @@ def _drop_not_null_notebook_id(conn) -> None:
     dcols = {r[1] for r in conn.execute("PRAGMA table_info(decks)")}
     if "progress" not in dcols:
         conn.execute("ALTER TABLE decks ADD COLUMN progress REAL")
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
 
 
 def get_conn() -> sqlite3.Connection:

@@ -31,38 +31,61 @@ FOCUS_SCHEMA = {
                     "name": {"type": "string"},
                     "summary": {"type": "string"},
                     "subtopics": {"type": "array", "items": {"type": "string"}},
+                    "key_terms": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "term": {"type": "string"},
+                                "definition": {"type": "string"},
+                            },
+                            "required": ["term", "definition"],
+                        },
+                    },
+                    "exam_questions": {"type": "array", "items": {"type": "string"}},
+                    "mistakes": {"type": "array", "items": {"type": "string"}},
                     "weight": {"type": "integer"},
                     "chapters": {"type": "string"},
                     "notes": {"type": "string"},
                 },
-                "required": ["name", "summary", "subtopics", "weight"],
+                "required": ["name", "summary", "subtopics", "key_terms", "exam_questions", "mistakes", "weight"],
             },
         }
     },
     "required": ["units"],
 }
 
-_SYSTEM = """You build a precise study Focus for a course from its syllabus.
-Read the FULL syllabus structure (units/modules/sections, page ranges, grading
-weights) and produce the course's focus units.
+_SYSTEM = """You build a precise, deeply detailed study Focus for a course.
+You get the syllabus AND the actual lesson content (slide outlines / lecture
+transcripts from this class). Use BOTH: the syllabus gives structure and
+priority; the lesson content tells you what was actually taught.
 
 For EACH unit return exactly:
-- name: the unit's exact/direct title from the syllabus.
-- summary: 1-3 sentences on what this unit actually teaches (its core ideas).
-- subtopics: 4-10 CONCRETE concepts/skills the student must master (specific,
-  not vague — "linear regression assumptions", not "regression"). This is the
-  highest-leverage field: be accurate and granular.
+- name: the unit's exact/direct title from the syllabus (or, if the syllabus is
+  thin, the major theme the lessons actually cover).
+- summary: 3-5 sentences on what this unit teaches — core ideas, how concepts
+  connect, and why it matters in the course. Ground it in the lesson content.
+- subtopics: 6-12 CONCRETE concepts/skills the student must master (specific,
+  not vague — "linear regression assumptions", not "regression"). Cover the
+  unit's full breadth as actually taught, not just what the syllabus lists.
+- key_terms: 5-15 terms a student must be able to DEFINE, each with a precise
+  1-2 sentence definition drawn from the lesson content (never vague). These
+  are the memorization layer of the Focus.
+- exam_questions: 3-6 plausible exam-style questions for this unit (mix of
+  define/compare/explain/apply). Phrase them the way a teacher would ask.
+- mistakes: 2-5 common mistakes or confusions students make in this unit
+  (e.g. confusing mitosis vs meiosis outcomes), phrased as a warning.
 - weight: 1-5 exam priority. Base it on stated grading emphasis, contact time,
   or section depth; default 3 when unclear. Do not inflate.
 - chapters: syllabus section/page range or chapter numbers for this unit, as
   stated (empty if not given).
 - notes: instructor emphasis / caveats / commonly-tested wrinkles, when the
-  syllabus or tone implies them (e.g. "teacher stresses definitions", "formula
-  sheet provided"). Omit if nothing.
+  syllabus, tone, or lesson content implies them. Omit if nothing.
 
-Return the schema exactly. Do not invent units not in the syllabus; if the
-syllabus is too thin, still return what's there. Administrative sections
-(grading, policies, schedule, references) are NOT units — skip them."""
+Return the schema exactly. Never invent facts not present in the material; if
+the material is thin, return fewer units with less depth instead of padding.
+Administrative syllabus sections (grading, policies, schedule, references) are
+NOT units — skip them."""
 
 
 def _loads_robust(content: str) -> dict:
@@ -86,7 +109,7 @@ def _bounded_llm(messages) -> dict:
     os.environ["STUDY_LLM_RETRIES"] = "1"
     try:
         content = llm.chat(messages, schema=FOCUS_SCHEMA, num_ctx=32768,
-                           num_predict=4096, temperature=0.1, timeout=900)
+                           num_predict=8192, temperature=0.1, timeout=900)
         return _loads_robust(content)
     finally:
         if prior is None:
@@ -137,6 +160,22 @@ def _heuristic_units(syllabus_text: str) -> list[dict]:
     return units
 
 
+def _lesson_context(notebook_id: int, limit: int = 24000) -> str:
+    """Lesson content actually taught in this notebook (slide outlines /
+    transcripts), head + tail sampled to stay within the context budget."""
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT c.text FROM chunks c JOIN recordings r ON r.id=c.recording_id"
+            " WHERE r.notebook_id=? ORDER BY r.id, c.idx", (notebook_id,)
+        ).fetchall()
+    text = "\n\n".join(r["text"] for r in rows if r["text"])
+    if len(text) <= limit:
+        return text
+    head = text[: limit // 2]
+    tail = text[-limit // 2 :]
+    return head + "\n\n[…middle omitted for length…]\n\n" + tail
+
+
 def generate(notebook_id: int, syllabus_text: str) -> int:
     """Build detailed focus_topics for a notebook from its syllabus.
 
@@ -144,17 +183,25 @@ def generate(notebook_id: int, syllabus_text: str) -> int:
     (0 on total failure — leaves prior focus intact).
     """
     units = None
+    lessons = ""
+    try:
+        lessons = _lesson_context(notebook_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("focus lesson context failed: %s", e)
+    llm_ok = True
     try:
         units = _bounded_llm([
             {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": f"Syllabus text:\n{(syllabus_text or '')[:24000]}"},
+            {"role": "user", "content":
+                f"Syllabus text:\n{(syllabus_text or '')[:16000]}"
+                + (f"\n\nLesson content from this class (slide outlines / transcripts):\n{lessons}"
+                   if lessons else "\n\n(No lesson content yet — use the syllabus only.)")},
         ]).get("units")
     except Exception as e:  # noqa: BLE001
         logger.warning("focus LLM failed: %s", e)
+        llm_ok = False
     if not units:
-        units = _heuristic_units(syllabus_text) or None
-    if not units:
-        return 0
+        return 0  # no heuristic fallback: a thin outline beats garbage units
 
     rows = []
     for u in units:
@@ -170,7 +217,16 @@ def generate(notebook_id: int, syllabus_text: str) -> int:
                      json.dumps(subs, ensure_ascii=False),
                      weight,
                      str(u.get("chapters") or "").strip(),
-                     str(u.get("notes") or "").strip(), name))
+                     str(u.get("notes") or "").strip(),
+                     json.dumps([
+                         {"term": str(t.get("term") or "").strip(),
+                          "definition": str(t.get("definition") or "").strip()}
+                         for t in (u.get("key_terms") or [])
+                         if str(t.get("term") or "").strip() and str(t.get("definition") or "").strip()
+                     ], ensure_ascii=False),
+                     json.dumps([str(q).strip() for q in (u.get("exam_questions") or []) if str(q).strip()], ensure_ascii=False),
+                     json.dumps([str(m).strip() for m in (u.get("mistakes") or []) if str(m).strip()], ensure_ascii=False),
+                     name))
     if not rows:
         return 0
 
@@ -178,19 +234,21 @@ def generate(notebook_id: int, syllabus_text: str) -> int:
         conn.execute("DELETE FROM focus_topics WHERE notebook_id=?", (notebook_id,))
         conn.executemany(
             "INSERT INTO focus_topics(notebook_id, position, summary, subtopics,"
-            " weight, chapters, notes, name) VALUES (?,?,?,?,?,?,?,?)",
+            " weight, chapters, notes, key_terms, exam_questions, mistakes, name)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             [(notebook_id, i, *r) for i, r in enumerate(rows)],
         )
         # keep notebooks.topics (flat names) in sync for existing consumers
         conn.execute("UPDATE notebooks SET topics=? WHERE id=?",
-                     ("\n".join(r[5] for r in rows), notebook_id))
+                     ("\n".join(r[-1] for r in rows), notebook_id))
     return len(rows)
 
 
 def get(notebook_id: int) -> list[dict]:
     with db.get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, position, name, summary, subtopics, weight, chapters, notes"
+            "SELECT id, position, name, summary, subtopics, weight, chapters, notes,"
+            " key_terms, exam_questions, mistakes"
             " FROM focus_topics WHERE notebook_id=? ORDER BY position", (notebook_id,)
         ).fetchall()
     out = []
@@ -200,5 +258,10 @@ def get(notebook_id: int) -> list[dict]:
             d["subtopics"] = json.loads(d["subtopics"] or "[]")
         except Exception:
             d["subtopics"] = []
+        for k in ("key_terms", "exam_questions", "mistakes"):
+            try:
+                d[k] = json.loads(d.get(k) or "[]")
+            except Exception:
+                d[k] = []
         out.append(d)
     return out
