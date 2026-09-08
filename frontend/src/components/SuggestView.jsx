@@ -200,6 +200,7 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
         {r.kind !== "notes" && <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>}
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className="badge s-unclassified">Waiting</span>
+        {r.duration_sec ? <span className="muted small-note" style={{fontVariantNumeric:"tabular-nums"}}>{fmtDur(r.duration_sec)}</span> : null}
         {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
         <span className="spacer" />
         <button className="btn small" onClick={() => onTranscript(r)} title="View full transcript">Transcript</button>
