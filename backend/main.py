@@ -95,7 +95,7 @@ def home_dashboard():
 def processing_status():
     with db.get_conn() as conn:
         rows = conn.execute(
-            "SELECT progress FROM recordings WHERE status IN"
+            "SELECT progress, duration_sec, status FROM recordings WHERE status IN"
             " ('queued','denoising','splitting','transcribing','reading','classifying')"
         ).fetchall()
         rec = len(rows)
@@ -105,10 +105,13 @@ def processing_status():
         waiting = conn.execute(
             "SELECT COUNT(*) AS n FROM tests WHERE confirmed=0"
         ).fetchone()["n"]
-    # overall progress: mean of active recording progress (queued counts as 0)
-    avg = round(sum(r["progress"] or 0 for r in rows) / len(rows), 3) if rows else 0.0
+    # duration-weighted progress: a 7-hour capture counts 7x a 20-min one
+    total_sec = sum((r["duration_sec"] or 0) for r in rows)
+    done_sec = sum((r["duration_sec"] or 0) * (r["progress"] or 0) for r in rows)
+    avg = round(done_sec / total_sec, 3) if total_sec else 0.0
     return {"recordings": rec, "decks": decks, "tests_waiting": waiting,
-            "progress": avg, "busy": (rec + decks) > 0}
+            "progress": avg, "busy": (rec + decks) > 0,
+            "total_min": round(total_sec / 60), "done_min": round(done_sec / 60)}
 
 
 @app.post("/api/jobs/stop")

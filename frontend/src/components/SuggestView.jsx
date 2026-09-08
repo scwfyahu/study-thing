@@ -156,6 +156,12 @@ function stripExt(name) {
   return i > 0 ? name.slice(0, i) : name;
 }
 
+function fmtDur(s) {
+  if (!s) return "";
+  const m = Math.floor(s / 60);
+  return `${Math.floor(m / 60) ? `${Math.floor(m / 60)}h ` : ""}${m % 60}m`;
+}
+
 function BusyRow({ r }) {
   const label = { queued: "Queued", denoising: "Cleaning audio", transcribing: "Transcribing", classifying: "Classifying…", reading: "Reading notes" }[r.status] || r.status;
   const [listen, setListen] = useState(false);
@@ -165,6 +171,7 @@ function BusyRow({ r }) {
         <span className="rec-name">{r.original_name}</span>
         {r.kind === "notes" && <span className="badge">Notes</span>}
         <span className={`badge s-${r.status}`}>{label}</span>
+        {r.duration_sec ? <span className="muted small-note" style={{fontVariantNumeric:"tabular-nums"}}>{fmtDur(r.duration_sec)}</span> : null}
         {r.note && <span className="muted small-note">{r.note}</span>}
         <span className="spacer" />
         {r.kind !== "notes" && <button className="btn small" onClick={() => setListen(!listen)}>{listen ? "Hide" : "Listen"}</button>}

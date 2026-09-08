@@ -9,6 +9,12 @@ import SuggestView from "./components/SuggestView.jsx";
 import HomeView from "./components/HomeView.jsx";
 import { askConfirm } from "./confirm.js";
 
+const fmtHm = (min) => {
+  if (!min || min < 1) return "0m";
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return (h ? `${h}h ` : "") + (m || !h ? `${m}m` : "");
+};
+
 export default function App() {
   const [notebooks, setNotebooks] = useState([]);
   const [proc, setProc] = useState(null);
@@ -144,6 +150,7 @@ export default function App() {
           <div className="proc-bar">
             <span className="proc-dot" /> Processing…
             {proc.recordings > 0 && ` ${proc.recordings} recording${proc.recordings > 1 ? "s" : ""}`}
+            {proc.total_min > 0 && ` · ${fmtHm(proc.done_min)} of ${fmtHm(proc.total_min)} audio`}
             {proc.decks > 0 && ` · ${proc.decks} deck${proc.decks > 1 ? "s" : ""}`}
             {proc.tests_waiting > 0 && ` · ${proc.tests_waiting} test${proc.tests_waiting > 1 ? "s" : ""} awaiting scope`}
             <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-muted)" }}>{Math.round((proc.progress || 0) * 100)}%</span>
@@ -161,9 +168,11 @@ export default function App() {
             >Stop all</button>
           </div>
         )}
-        {proc?.busy && (
-          <div className="progress proc-progress"><div className="bar" style={{ width: `${Math.round((proc.progress || 0) * 100)}%` }} /></div>
-        )}
+      {proc?.busy && (
+        <div className="progress proc-progress">
+          <div className="bar" style={{ width: `${Math.round((proc.progress || 0) * 100)}%` }} />
+        </div>
+      )}
         {error && <div className="banner error">{error}</div>}
         {study ? (
           <StudyView

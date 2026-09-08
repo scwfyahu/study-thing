@@ -160,12 +160,12 @@ def _whisper_cpp(path, model, language, progress_cb=None) -> dict:
         cmd = [str(bin_path), "-m", str(model_path), "-f", piece, "-nt", "-oj", "-of", piece, "-np"]
         if language and language.lower() != "auto":
             cmd += ["-l", language]
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=14400)
+        p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=14400)
         if p.returncode != 0:
             raise RuntimeError(f"whisper-cli failed: {p.stderr[-500:]}")
         jpath = piece + ".json"
         if os.path.exists(jpath):
-            with open(jpath) as f:
+            with open(jpath, encoding="utf-8", errors="replace") as f:
                 data = json.load(f)
             for s in (data.get("transcription") or []):
                 t = (s.get("text") or "").strip()

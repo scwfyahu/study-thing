@@ -107,7 +107,7 @@ def recorded_at_of(path) -> str | None:
         p = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format_tags",
              "-of", "json", str(path)],
-            capture_output=True, text=True, timeout=20)
+            capture_output=True, text=True, errors="replace", timeout=20)
         tags = (json.loads(p.stdout).get("format") or {}).get("tags") or {}
         val = tags.get("creation_time") or tags.get("date") or tags.get("year")
         if val:
@@ -126,7 +126,7 @@ def recorded_at_of(path) -> str | None:
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     if p.returncode != 0:
         raise RuntimeError(f"{cmd[0]} failed: {p.stderr[-500:]}")
     return p
