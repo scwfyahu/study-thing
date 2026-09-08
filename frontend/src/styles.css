@@ -533,6 +533,15 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
   padding: 5px 9px; border-radius: var(--radius-input);
 }
 
+/* ============================ split modal ============================ */
+.split-modal { width: 760px; }
+.split-rows { display: flex; flex-direction: column; gap: var(--space-3xs); max-height: 46vh; overflow: auto; }
+.split-row { display: flex; align-items: center; gap: var(--space-3xs); padding: var(--space-3xs) 0; border-bottom: 1px solid var(--color-rule); }
+.split-row:last-child { border-bottom: 0; }
+.split-min { width: 70px; flex: 0 0 auto; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-rule-2); border-radius: var(--radius-input); padding: 4px 6px; font: 500 0.8125rem var(--font-mono); font-variant-numeric: tabular-nums; }
+.split-title { flex: 1 1 120px; min-width: 100px; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-rule-2); border-radius: var(--radius-input); padding: 4px 8px; font-size: var(--text-sm); }
+.split-row select { max-width: 180px; background: var(--color-paper); color: var(--color-ink); border: 1px solid var(--color-rule-2); border-radius: var(--radius-input); padding: 4px 6px; font-size: var(--text-sm); }
+
 /* ============================ transcript — the graphite beat ============================ */
 .transcript-modal { max-width: 900px; width: 92vw; display: flex; flex-direction: column; max-height: 86vh; background: var(--color-graphite); border-color: oklch(35% 0.018 259); }
 .transcript-modal h3, .transcript-modal .modal-head h3 { color: var(--color-graphite-2); }

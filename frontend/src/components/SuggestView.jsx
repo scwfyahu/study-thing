@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { askConfirm } from "../confirm.js";
+import SplitModal from "./SplitModal.jsx";
 
 const BUSY = new Set(["queued", "denoising", "splitting", "transcribing", "reading", "classifying"]);
 
@@ -11,6 +12,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
   const [newFor, setNewFor] = useState(null); // recording id being given a fresh notebook
   const [newName, setNewName] = useState("");
   const [transcript, setTranscript] = useState(null); // {name, text}
+  const [splitRec, setSplitRec] = useState(null);
   const fileInput = useRef(null);
 
   const openTranscript = async (r) => {
@@ -123,7 +125,8 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
             creating={newFor === r.id} newName={newName} setNewName={setNewName}
             onCreateGo={() => createAndAssign(r.id, r.suggestion?.name || stripExt(r.original_name), r.suggestion?.topics)}
             onCreateCancel={() => { setNewFor(null); setNewName(""); }}
-            onReclassify={reclassify} onDelete={del} onTranscript={openTranscript} />
+            onReclassify={reclassify} onDelete={del} onTranscript={openTranscript}
+            onSplit={setSplitRec} />
         ))}
       </section>
 
@@ -137,6 +140,12 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
             <pre className="transcript-body">{transcript.text}</pre>
           </div>
         </div>
+      )}
+
+      {splitRec && (
+        <SplitModal rec={splitRec} notebooks={notebooks}
+          onClose={() => setSplitRec(null)}
+          onDone={() => { setSplitRec(null); load(); }} />
       )}
     </div>
   );
@@ -168,7 +177,7 @@ function BusyRow({ r }) {
   );
 }
 
-function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCreateStart, onCreateGo, onCreateCancel, onReclassify, onDelete, onTranscript }) {
+function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCreateStart, onCreateGo, onCreateCancel, onReclassify, onDelete, onTranscript, onSplit }) {
   const [open, setOpen] = useState(false);
   const [listen, setListen] = useState(false);
   const sug = r.suggestion;
@@ -187,6 +196,9 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
         {r.recorded_at ? <span className="muted small-note">{r.recorded_at}</span> : null}
         <span className="spacer" />
         <button className="btn small" onClick={() => onTranscript(r)} title="View full transcript">Transcript</button>
+        {r.kind !== "notes" && (r.duration_sec || 0) >= 900 && (
+          <button className="btn small" onClick={() => onSplit(r)} title="Cut this recording into separate class recordings">✂ Auto-split</button>
+        )}
         <button className="btn small" onClick={() => onReclassify(r.id)} title="Re-run classification">⟳ Re-classify</button>
         <button className="icon-del" onClick={() => onDelete(r.id, r.original_name)} title="Delete">✕</button>
       </div>

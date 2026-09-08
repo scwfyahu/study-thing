@@ -5,6 +5,7 @@ import QuizModal from "./QuizModal.jsx";
 import QuizView from "./QuizView.jsx";
 import FocusView from "./FocusView.jsx";
 import TranscriptModal from "./TranscriptModal.jsx";
+import SplitModal from "./SplitModal.jsx";
 import { askConfirm } from "../confirm.js";
 
 export const STATUS_LABEL = {
@@ -28,6 +29,7 @@ function fmtDur(s) {
 export default function NotebookView({ notebookId, notebooks, onStudy, onEditFocus }) {
   const [nb, setNb] = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [splitRec, setSplitRec] = useState(null); // recording proposed for auto-split
   const [busy, setBusy] = useState(false);
   const [reviewers, setReviewers] = useState([]);
   const [revBusy, setRevBusy] = useState(false);
@@ -321,7 +323,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           </p>
         )}
         {srcRows.map((r) => (
-          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} nbId={nb.id} notebooks={notebooks} onTranscript={openRecTranscript} />
+          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} nbId={nb.id} notebooks={notebooks} onTranscript={openRecTranscript} onSplit={(rec) => setSplitRec(rec)} />
         ))}
       </section>
       </section>
@@ -388,6 +390,11 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
       {scopeModal && <ScopeModal deck={scopeModal} onClose={() => setScopeModal(null)} />}
       {transcriptModal && <TranscriptModal title={transcriptModal.title} data={transcriptModal.data} onClose={() => setTranscriptModal(null)} />}
+      {splitRec && (
+        <SplitModal rec={splitRec} notebooks={notebooks}
+          onClose={() => setSplitRec(null)}
+          onDone={() => { setSplitRec(null); load(); }} />
+      )}
       {quizModal && (
         <QuizModal
           tests={tests}
@@ -508,7 +515,7 @@ function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope })
   );
 }
 
-function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTranscript }) {
+function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTranscript, onSplit }) {
   const active = ACTIVE.has(r.status);
   const [listen, setListen] = useState(false);
 
@@ -550,6 +557,9 @@ function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTransc
         {r.kind !== "notes" && r.status === "done" && (
           <>
             <button className="btn small" onClick={() => onTranscript && onTranscript(r)}>Transcript</button>
+            {r.duration_sec >= 900 && (
+              <button className="btn small" onClick={() => onSplit(r)} title="Cut this recording into separate class recordings">✂ Auto-split</button>
+            )}
             <button className="btn small" onClick={reprocess}>↻ Re-process</button>
           </>
         )}

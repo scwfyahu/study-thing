@@ -87,6 +87,12 @@ export const api = {
     }).then(j),
   reclassify: (id) => fetch(`/api/recordings/${id}/reclassify`, { method: "POST" }).then(j),
   transcript: (id) => fetch(`/api/recordings/${id}/transcript`).then(j),
+  splitPropose: (id) => fetch(`/api/recordings/${id}/split-propose`, { method: "POST" }).then(j),
+  splitApply: (id, segments) =>
+    fetch(`/api/recordings/${id}/split-apply`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segments }),
+    }).then(j),
   notebookTranscript: (nbId, q) => {
     const qs = q ? `?q=${encodeURIComponent(q)}` : "";
     return fetch(`/api/notebooks/${nbId}/transcript${qs}`).then(j);

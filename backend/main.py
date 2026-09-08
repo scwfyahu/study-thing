@@ -1,5 +1,6 @@
 """StudyThing API — notebooks (classes) contain recordings; recordings produce flashcards."""
 import json
+import logging
 import re
 import shutil
 import sqlite3
@@ -13,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, srs, syllabus
+
+logger = logging.getLogger("studything.api")
 from .tunnel import router as tunnel_router
 from .config import (
     ASR_BACKEND,
@@ -537,6 +540,41 @@ def inbox_count():
             "SELECT COUNT(*) AS n FROM recordings WHERE notebook_id IS NULL"
         ).fetchone()["n"]
     return {"count": n}
+
+
+@app.post("/api/recordings/{rec_id}/split-propose")
+def split_propose(rec_id: int, background_tasks: BackgroundTasks):
+    """LLM proposes class-boundary segments for a long cross-class recording."""
+    with db.get_conn() as conn:
+        rec = conn.execute("SELECT * FROM recordings WHERE id=?", (rec_id,)).fetchone()
+    if rec is None:
+        raise HTTPException(404, "recording not found")
+    from . import splitter
+    if not splitter.eligible(rec):
+        raise HTTPException(400, "only fully transcribed audio recordings over 15 minutes can be split")
+    try:
+        proposal = splitter.propose(rec_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, f"split proposal failed: {e}")
+    return proposal
+
+
+@app.post("/api/recordings/{rec_id}/split-apply")
+def split_apply(rec_id: int, body: dict, background_tasks: BackgroundTasks):
+    """Apply confirmed segments: cut, escrow each part, retire the original."""
+    segments = body.get("segments") or []
+    if not segments:
+        raise HTTPException(400, "no segments")
+    background_tasks.add_task(_split_apply_task, rec_id, segments)
+    return {"ok": True, "status": "splitting"}
+
+
+def _split_apply_task(rec_id: int, segments: list[dict]) -> None:
+    from . import splitter
+    try:
+        splitter.apply(rec_id, segments)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("split apply failed for %s: %s", rec_id, e)
 
 
 @app.post("/api/recordings/{rec_id}/reclassify")
