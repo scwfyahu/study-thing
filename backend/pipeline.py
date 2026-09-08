@@ -4,11 +4,14 @@ Runs sequentially (one recording at a time) so an M-series Air with 16GB
 unified memory never holds the ASR model and the LLM at the same time.
 """
 import json
+import logging
 import os
 import re
 import shutil
 import subprocess
 import threading
+
+logger = logging.getLogger("studything.pipeline")
 
 from . import db
 from .config import (
@@ -351,6 +354,24 @@ def _classify_and_escrow(recording_id: int, text: str) -> None:
     note = "Transcribed — assign it to a notebook from the Suggest tab."
     _set(recording_id, status="unclassified", progress=1.0, note=note,
          suggestion=suggestion, error=None)
+    # Forgotten cross-class recordings: proactively propose a split so the
+    # inbox surfaces a "✂ N segments suggested" affordance without the user
+    # having to notice. Bounded + best-effort: failure = no proposal, never
+    # breaks the escrow state just written.
+    try:
+        with db.get_conn() as conn:
+            rec = conn.execute("SELECT kind, duration_sec FROM recordings WHERE id=?",
+                               (recording_id,)).fetchone()
+        from . import splitter
+        if rec and rec["kind"] == "recording" and (rec["duration_sec"] or 0) >= 45 * 60:
+            proposal = splitter.propose(recording_id)
+            if len(proposal.get("segments", [])) > 1:
+                with db.get_conn() as conn:
+                    conn.execute("UPDATE recordings SET split_proposal=? WHERE id=?",
+                                 (json.dumps(proposal, ensure_ascii=False), recording_id))
+                    conn.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("auto split-propose failed for %s: %s", recording_id, e)
 
 
 def _process_notes(recording_id: int, rec) -> None:

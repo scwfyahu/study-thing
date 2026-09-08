@@ -164,6 +164,8 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE focus_topics ADD COLUMN exam_questions TEXT")
     if "mistakes" not in fcols:
         conn.execute("ALTER TABLE focus_topics ADD COLUMN mistakes TEXT")
+    if "split_proposal" not in rcols:
+        conn.execute("ALTER TABLE recordings ADD COLUMN split_proposal TEXT")
     _drop_not_null_notebook_id(conn)
 
 

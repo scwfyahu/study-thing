@@ -12,7 +12,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
   const [newFor, setNewFor] = useState(null); // recording id being given a fresh notebook
   const [newName, setNewName] = useState("");
   const [transcript, setTranscript] = useState(null); // {name, text}
-  const [splitRec, setSplitRec] = useState(null);
+  const [splitRec, setSplitRec] = useState(null); // {rec, preset?}
   const fileInput = useRef(null);
 
   const openTranscript = async (r) => {
@@ -126,7 +126,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
             onCreateGo={() => createAndAssign(r.id, r.suggestion?.name || stripExt(r.original_name), r.suggestion?.topics)}
             onCreateCancel={() => { setNewFor(null); setNewName(""); }}
             onReclassify={reclassify} onDelete={del} onTranscript={openTranscript}
-            onSplit={setSplitRec} />
+            onSplit={(rec) => setSplitRec({ rec, preset: rec.split_proposal || null })} />
         ))}
       </section>
 
@@ -143,7 +143,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
       )}
 
       {splitRec && (
-        <SplitModal rec={splitRec} notebooks={notebooks}
+        <SplitModal rec={splitRec.rec} preset={splitRec.preset} notebooks={notebooks}
           onClose={() => setSplitRec(null)}
           onDone={() => { setSplitRec(null); load(); }} />
       )}
@@ -198,6 +198,11 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
         <button className="btn small" onClick={() => onTranscript(r)} title="View full transcript">Transcript</button>
         {r.kind !== "notes" && (r.duration_sec || 0) >= 900 && (
           <button className="btn small" onClick={() => onSplit(r)} title="Cut this recording into separate class recordings">✂ Auto-split</button>
+        )}
+        {r.split_proposal?.segments?.length > 1 && (
+          <button className="btn small primary-split" onClick={() => onSplit(r)} title="Review the suggested split">
+            ✂ {r.split_proposal.segments.length} segments suggested
+          </button>
         )}
         <button className="btn small" onClick={() => onReclassify(r.id)} title="Re-run classification">⟳ Re-classify</button>
         <button className="icon-del" onClick={() => onDelete(r.id, r.original_name)} title="Delete">✕</button>

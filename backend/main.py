@@ -514,7 +514,7 @@ def list_inbox():
     with db.get_conn() as conn:
         rows = conn.execute(
             "SELECT id, original_name, kind, status, note, error, suggestion,"
-            " duration_sec, recorded_at, created_at FROM recordings WHERE notebook_id IS NULL"
+            " split_proposal, duration_sec, recorded_at, created_at FROM recordings WHERE notebook_id IS NULL"
             " ORDER BY COALESCE(recorded_at, created_at) DESC, id DESC"
         ).fetchall()
         chunks = {}
@@ -528,6 +528,10 @@ def list_inbox():
     for r in rows:
         d = dict(r)
         d["suggestion"] = _parse_suggestion(r)
+        try:
+            d["split_proposal"] = json.loads(r["split_proposal"]) if r["split_proposal"] else None
+        except Exception:
+            d["split_proposal"] = None
         d["transcript_preview"] = (chunks.get(r["id"]) or "")[:800]
         out.append(d)
     return out

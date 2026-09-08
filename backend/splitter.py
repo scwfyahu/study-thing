@@ -74,7 +74,7 @@ def _loads_robust(content: str) -> dict:
 
 
 def eligible(rec) -> bool:
-    return (rec["kind"] == "recording" and rec["status"] == "done"
+    return (rec["kind"] == "recording" and rec["status"] in ("done", "unclassified")
             and (rec["duration_sec"] or 0) >= _MIN_DURATION)
 
 

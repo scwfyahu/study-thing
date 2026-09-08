@@ -6,14 +6,15 @@ const fmtMin = (m) => `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padSt
 
 // Proposal editor: LLM-proposed class segments for a long cross-class
 // recording. Fully editable before Apply — start/end are minutes.
-export default function SplitModal({ rec, notebooks, onClose, onDone }) {
-  const [proposal, setProposal] = useState(null);
+export default function SplitModal({ rec, notebooks, preset, onClose, onDone }) {
+  const [proposal, setProposal] = useState(preset || null);
   const [error, setError] = useState("");
   const [applying, setApplying] = useState(false);
 
   const retry = () => { setProposal(null); setError(""); api.splitPropose(rec.id).then((p) => setProposal(p)).catch((e) => setError(String(e.message || e))); };
 
   useEffect(() => {
+    if (preset) return; // pre-computed proposal (auto-suggested on upload)
     let alive = true;
     setProposal(null); setError("");
     api.splitPropose(rec.id)
