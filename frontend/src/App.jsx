@@ -19,6 +19,8 @@ export default function App() {
   const [notebooks, setNotebooks] = useState([]);
   const [proc, setProc] = useState(null);
   const [inboxN, setInboxN] = useState(0);
+  const [update, setUpdate] = useState(null);
+  const [upgrading, setUpgrading] = useState(false);
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("st-theme");
     if (saved) return saved;
@@ -32,6 +34,7 @@ export default function App() {
     const check = async () => {
       try { setProc(await fetch("/api/processing").then((r) => r.json())); } catch {}
       try { setInboxN((await fetch("/api/inbox/count").then((r) => r.json())).count || 0); } catch {}
+      try { setUpdate(await fetch("/api/update").then((r) => r.json())); } catch {}
     };
     check();
     const t = setInterval(check, 5000);
@@ -138,6 +141,19 @@ export default function App() {
         </form>
         <SharePanel />
         <div className="sidebar-foot-row">
+          {update?.available && (
+            <button className="theme-toggle update-btn"
+              disabled={upgrading}
+              onClick={async () => {
+                if (!(await askConfirm(
+                  `Install update ${update.latest}?\nYour recordings and settings are kept. The app restarts automatically.`
+                ))) return;
+                setUpgrading(true);
+                try { await fetch("/api/update/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: update.url }) }); } catch {}
+              }}>
+              {upgrading ? "Downloading update…" : `⟳ Update ${update.latest}`}
+            </button>
+          )}
           <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {theme === "dark" ? "Light mode" : "Dark mode"}
           </button>

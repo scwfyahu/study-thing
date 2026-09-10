@@ -37,6 +37,10 @@ if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force -Path "$out\bin" | Out-Null
 Copy-Item ..\dist\StudyThing.exe "$out\StudyThing.exe"
 Copy-Item "START-HERE.txt" "$out\START-HERE.txt"
+# app version for the update checker: tag name in CI, date+hash locally
+$ver = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "v1.0.0-$(Get-Date -Format yyyyMMdd)-$(git -C .. rev-parse --short HEAD)" }
+Set-Content "$out\version.txt" $ver
+Write-Host "    version: $ver"
 
 Write-Host "==> ffmpeg (static essentials)"
 if (-not (Test-Path "$out\bin\ffmpeg.exe")) {

@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, srs, syllabus
+from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, srs, selfupdate, syllabus
 
 logger = logging.getLogger("studything.api")
 from .tunnel import router as tunnel_router
@@ -1315,6 +1315,21 @@ def delete_quiz(qid: int):
 
 
 # ------------------------------------------------------------------- health
+
+@app.get("/api/update")
+def update_check():
+    """Self-update availability (frozen Windows install only)."""
+    return selfupdate.check()
+
+
+@app.post("/api/update/install")
+def update_install(body: dict):
+    url = (body or {}).get("url") or ""
+    if not url.startswith("https://github.com/"):
+        raise HTTPException(400, "bad update url")
+    selfupdate.install(url)
+    return {"ok": True}  # never reached on success — app exits
+
 
 @app.get("/api/health")
 def health():

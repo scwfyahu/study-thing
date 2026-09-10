@@ -614,3 +614,5 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 }
 .btn.primary-split { border-color: oklch(from var(--color-accent) l c h / 0.6); color: var(--color-accent); background: oklch(from var(--color-accent) l c h / 0.07); }
 .btn.primary-split:hover { background: oklch(from var(--color-accent) l c h / 0.12); }
+.update-btn { border-color: oklch(from var(--color-accent) l c h / 0.6); color: var(--color-accent); width: 100%; }
+.update-btn:hover { background: oklch(from var(--color-accent) l c h / 0.1); }
