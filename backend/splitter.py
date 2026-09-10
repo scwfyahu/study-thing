@@ -242,18 +242,16 @@ def apply(rec_id: int, segments: list[dict]) -> dict:
             conn.commit()
         created.append(new_id)
     # classify each segment from its own transcript slice (escrow suggestion)
+    # NOTE: pass notebooks=None — classify builds its own well-formed profiles
     from . import classify as _classify
-    with db.get_conn() as conn:
-        nbs = [dict(n) for n in conn.execute(
-            "SELECT id, name, topics FROM notebooks").fetchall()]
     for new_id in created:
         try:
             with db.get_conn() as conn:
                 text = " ".join(r["text"] for r in conn.execute(
                     "SELECT text FROM chunks WHERE recording_id=? ORDER BY idx",
                     (new_id,)).fetchall())
-            sug = _classify.classify(text, nbs) if text.strip() else None
-            if sug and sug.get("notebook_id"):
+            sug = _classify.classify(text) if text.strip() else None
+            if sug:
                 with db.get_conn() as conn:
                     conn.execute("UPDATE recordings SET suggestion=? WHERE id=?",
                                  (json.dumps(sug, ensure_ascii=False), new_id))
