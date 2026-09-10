@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { askConfirm } from "../confirm.js";
 import SplitModal from "./SplitModal.jsx";
+import useAudioReady from "./useAudioReady.js";
 
 const BUSY = new Set(["queued", "denoising", "splitting", "transcribing", "reading", "classifying"]);
 
@@ -165,6 +166,7 @@ function fmtDur(s) {
 function BusyRow({ r }) {
   const label = { queued: "Queued", denoising: "Cleaning audio", transcribing: "Transcribing", classifying: "Classifying…", reading: "Reading notes" }[r.status] || r.status;
   const [listen, setListen] = useState(false);
+  const audioState = useAudioReady(r.id, listen);
   return (
     <div className="rec-row">
       <div className="rec-top">
@@ -178,7 +180,9 @@ function BusyRow({ r }) {
       </div>
       <div className="progress"><div className="bar" style={{ width: `${Math.round((r.progress || 0) * 100)}%` }} /></div>
       {listen && (
-        <audio controls preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
+        audioState === "ready"
+          ? <audio controls autoPlay preload="none" src={`/api/recordings//audio`} style={{ width: "100%", marginTop: 6 }} />
+          : <div className="muted small-note" style={{ marginTop: 6 }}>Preparing audio — extracting the audio track (one time)…</div>
       )}
     </div>
   );
@@ -191,6 +195,7 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
   const hasSuggestion = sug && sug.name && sug.notebook_id;
   const sugExists = hasSuggestion && notebooks.some((n) => n.id === sug.notebook_id);
   const [pick, setPick] = useState(sug?.notebook_id || "");
+  const audioState = useAudioReady(r.id, listen);
 
   return (
     <div className="rec-row">
@@ -217,7 +222,9 @@ function EscrowRow({ r, notebooks, onAssign, creating, newName, setNewName, onCr
       </div>
 
       {listen && (
-        <audio controls preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
+        audioState === "ready"
+          ? <audio controls autoPlay preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
+          : <div className="muted small-note" style={{ marginTop: 6 }}>Preparing audio{audioState === "checking" ? "…" : " — extracting the audio track (one time)…"}</div>
       )}
 
       {sug && (

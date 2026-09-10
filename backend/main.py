@@ -4,6 +4,8 @@ import logging
 import re
 import shutil
 import sqlite3
+import subprocess
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -734,9 +736,76 @@ def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s)[:100] or "deck"
 
 
+logger = logging.getLogger("studything.api")
+
+_proxy_building: dict[int, bool] = {}
+
+
+def _audio_proxy_path(rec_id: int) -> Path:
+    """Prefer the remuxed m4a, else the encoded mp3 fallback."""
+    m4a = AUDIO_DIR / "proxy" / f"{rec_id}.m4a"
+    if m4a.exists():
+        return m4a
+    return AUDIO_DIR / "proxy" / f"{rec_id}.mp3"
+
+
+def _build_audio_proxy(rec_id: int, p: Path):
+    """Remux just the audio track (stream copy — seconds even for 4h videos).
+    Browsers can't seek huge video mp4s as audio (moov at end / video stream)."""
+    try:
+        out_dir = AUDIO_DIR / "proxy"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        tmp = out_dir / f"{rec_id}.tmp.m4a"
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+             "-i", str(p), "-vn", "-acodec", "copy", str(tmp)],
+            capture_output=True, text=True, errors="replace", timeout=900)
+        ok = r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 10_000
+        if not ok:
+            # non-copyable/stream-broken codec -> encode low-bitrate mp3
+            tmp = out_dir / f"{rec_id}.tmp.mp3"
+            r2 = subprocess.run(
+                ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                 "-i", str(p), "-vn", "-c:a", "libmp3lame", "-b:a", "48k", str(tmp)],
+                capture_output=True, text=True, errors="replace", timeout=3600)
+            ok = r2.returncode == 0 and tmp.exists() and tmp.stat().st_size > 10_000
+            if ok:
+                tmp.replace(out_dir / f"{rec_id}.mp3")
+            else:
+                logger.warning("audio proxy encode failed for %s: %s", rec_id,
+                               r2.stderr[-300:])
+        else:
+            tmp.replace(out_dir / f"{rec_id}.m4a")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("audio proxy build failed for %s: %s", rec_id, e)
+    finally:
+        _proxy_building[rec_id] = False
+
+
+@app.get("/api/recordings/{rec_id}/audio-status")
+def audio_status(rec_id: int):
+    """Is the fast playback proxy ready? Auto-starts building it."""
+    with db.get_conn() as conn:
+        row = conn.execute("SELECT stored_path FROM recordings WHERE id=?", (rec_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "recording not found")
+    p = Path(row["stored_path"])
+    if not p.exists():
+        raise HTTPException(404, "file missing")
+    if _audio_proxy_path(rec_id).exists():
+        return {"ready": True, "preparing": False}
+    if p.suffix.lower() in (".mp4", ".mov", ".mkv") or p.stat().st_size > 150_000_000:
+        if not _proxy_building.get(rec_id):
+            _proxy_building[rec_id] = True
+            threading.Thread(target=_build_audio_proxy, args=(rec_id, p), daemon=True).start()
+        return {"ready": False, "preparing": True}
+    return {"ready": True, "preparing": False}  # small native audio: serves fast
+
+
 @app.get("/api/recordings/{rec_id}/audio")
 def get_audio(rec_id: int, request: Request):
-    """Stream the original recording for in-app playback (Range requests supported)."""
+    """Stream the recording for in-app playback (Range requests supported).
+    Serves the remuxed audio proxy when one exists (fast on huge video files)."""
     import re as _re
     from pathlib import Path as _Path
 
@@ -751,6 +820,9 @@ def get_audio(rec_id: int, request: Request):
     p = _Path(row["stored_path"])
     if not p.exists():
         raise HTTPException(404, "audio file missing")
+    proxy = _audio_proxy_path(rec_id)
+    if proxy.exists():
+        p = proxy
     mime = {
         ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
         ".mp4": "audio/mp4", ".ogg": "audio/ogg", ".flac": "audio/flac",

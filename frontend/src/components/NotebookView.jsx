@@ -6,6 +6,7 @@ import QuizView from "./QuizView.jsx";
 import FocusView from "./FocusView.jsx";
 import TranscriptModal from "./TranscriptModal.jsx";
 import SplitModal from "./SplitModal.jsx";
+import useAudioReady from "./useAudioReady.js";
 import { askConfirm } from "../confirm.js";
 
 export const STATUS_LABEL = {
@@ -537,6 +538,8 @@ function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTransc
     onChanged();
   };
 
+  const audioState = useAudioReady(r.id, listen);
+
   return (
     <div className="rec-row">
       <div className="rec-top">
@@ -584,7 +587,9 @@ function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTransc
         </>
       )}
       {listen && (
-        <audio controls preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
+        audioState === "ready"
+          ? <audio controls autoPlay preload="none" src={`/api/recordings/${r.id}/audio`} style={{ width: "100%", marginTop: 6 }} />
+          : <div className="muted small-note" style={{ marginTop: 6 }}>Preparing audio{audioState === "checking" ? "…" : " — big video file, extracting the audio track (one time)…"}</div>
       )}
       {r.status === "error" && <div className="err-text">{r.error}</div>}
     </div>

@@ -8,6 +8,7 @@ async function j(res) {
 
 export const api = {
   health: () => fetch("/api/health").then(j),
+  audioStatus: (id) => fetch(`/api/recordings/${id}/audio-status`).then(j),
   home: () => fetch("/api/home").then(j),
   processing: () => fetch("/api/processing").then(j),
   notebooks: () => fetch("/api/notebooks").then(j),

@@ -93,11 +93,17 @@ def chat(messages: list[dict], *, schema=None, num_ctx: int = 65536,
         attempt += 1
         try:
             if provider() == "openrouter":
-                return _openrouter_chat(messages, schema, temperature,
-                                        num_predict, timeout,
-                                        model_override=model_override)
-            return _ollama_chat(messages, schema, num_ctx, num_predict,
-                                temperature, timeout)
+                out = _openrouter_chat(messages, schema, temperature,
+                                       num_predict, timeout,
+                                       model_override=model_override)
+            else:
+                out = _ollama_chat(messages, schema, num_ctx, num_predict,
+                                   temperature, timeout)
+            # some models (glm free tier) return empty content intermittently —
+            # treat like an outage so retry/failover kicks in
+            if not (out or "").strip():
+                raise LLMUnavailable("empty LLM response")
+            return out
         except LLMUnavailable as e:
             # cross-provider failover: if the primary is down and the other
             # provider is up, use it instead of flapping on one endpoint.
