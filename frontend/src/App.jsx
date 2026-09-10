@@ -7,6 +7,7 @@ import SharePanel from "./components/SharePanel.jsx";
 import StudyView from "./components/StudyView.jsx";
 import SuggestView from "./components/SuggestView.jsx";
 import HomeView from "./components/HomeView.jsx";
+import SetupView from "./components/SetupView.jsx";
 import { askConfirm } from "./confirm.js";
 
 const fmtHm = (min) => {
@@ -21,6 +22,7 @@ export default function App() {
   const [inboxN, setInboxN] = useState(0);
   const [update, setUpdate] = useState(null);
   const [upgrading, setUpgrading] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("st-theme");
     if (saved) return saved;
@@ -35,6 +37,7 @@ export default function App() {
       try { setProc(await fetch("/api/processing").then((r) => r.json())); } catch {}
       try { setInboxN((await fetch("/api/inbox/count").then((r) => r.json())).count || 0); } catch {}
       try { setUpdate(await fetch("/api/update").then((r) => r.json())); } catch {}
+      try { setNeedsSetup((await fetch("/api/setup/status").then((r) => r.json())).needed); } catch {}
     };
     check();
     const t = setInterval(check, 5000);
@@ -162,6 +165,10 @@ export default function App() {
       </aside>
 
       <main className="main">
+        {needsSetup ? (
+          <SetupView onDone={() => setNeedsSetup(false)} />
+        ) : (
+        <>
         {proc?.busy && (
           <div className="proc-bar">
             <span className="proc-dot" /> Processing…
@@ -189,7 +196,7 @@ export default function App() {
           <div className="bar" style={{ width: `${Math.round((proc.progress || 0) * 100)}%` }} />
         </div>
       )}
-        {error && <div className="banner error">{error}</div>}
+      {error && <div className="banner error">{error}</div>}
         {study ? (
           <StudyView
             notebookId={study.notebookId}
@@ -228,6 +235,8 @@ export default function App() {
             onSave={saveNotebook}
             onClose={() => setModal(null)}
           />
+        )}
+        </>
         )}
       </main>
     </div>

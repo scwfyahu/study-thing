@@ -9,6 +9,10 @@ async function j(res) {
 export const api = {
   health: () => fetch("/api/health").then(j),
   audioStatus: (id) => fetch(`/api/recordings/${id}/audio-status`).then(j),
+  setupStatus: () => fetch("/api/setup/status").then(j),
+  setupCloud: (key, model) => fetch("/api/setup/cloud", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, model }) }).then(j),
+  setupLocal: (model) => fetch("/api/setup/local", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }) }).then(j),
+  setupProgress: () => fetch("/api/setup/progress").then(j),
   home: () => fetch("/api/home").then(j),
   processing: () => fetch("/api/processing").then(j),
   notebooks: () => fetch("/api/notebooks").then(j),

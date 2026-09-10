@@ -616,3 +616,9 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .btn.primary-split:hover { background: oklch(from var(--color-accent) l c h / 0.12); }
 .update-btn { border-color: oklch(from var(--color-accent) l c h / 0.6); color: var(--color-accent); width: 100%; }
 .update-btn:hover { background: oklch(from var(--color-accent) l c h / 0.1); }
+/* ============================ setup wizard ============================ */
+.setup { max-width: 640px; margin-top: var(--space-md); }
+.setup-option { border: 1px solid var(--color-rule); border-radius: 10px; padding: var(--space-xs); margin-top: var(--space-xs); background: var(--color-paper-2); }
+.setup-option h3 { margin-bottom: var(--space-3xs); font-size: var(--text-md); }
+.setup-row { display: flex; gap: var(--space-3xs); flex-wrap: wrap; align-items: center; margin-top: var(--space-2xs); }
+.setup-row input { flex: 1 1 260px; min-width: 0; }

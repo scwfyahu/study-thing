@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, srs, selfupdate, syllabus
+from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, selfupdate, setupwizard as setupw, srs, syllabus
 
 logger = logging.getLogger("studything.api")
 from .tunnel import router as tunnel_router
@@ -1329,6 +1329,26 @@ def update_install(body: dict):
         raise HTTPException(400, "bad update url")
     selfupdate.install(url)
     return {"ok": True}  # never reached on success — app exits
+
+
+@app.get("/api/setup/status")
+def setup_status():
+    return setupw.status()
+
+
+@app.post("/api/setup/cloud")
+def setup_cloud(body: dict):
+    return setupw.set_cloud((body or {}).get("key", ""), (body or {}).get("model", ""))
+
+
+@app.post("/api/setup/local")
+def setup_local(body: dict):
+    return setupw.start_local((body or {}).get("model", ""))
+
+
+@app.get("/api/setup/progress")
+def setup_progress():
+    return setupw.local_progress()
 
 
 @app.get("/api/health")
