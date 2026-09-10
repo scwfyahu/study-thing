@@ -7,9 +7,11 @@ import os
 block_cipher = None
 
 datas = []
-dist_dir = os.path.join("..", "frontend", "dist")
+dist_dir = os.path.join(SPECPATH, "..", "frontend", "dist")
 if os.path.isdir(dist_dir):
     datas.append((dist_dir, "frontend/dist"))
+else:
+    raise SystemExit("frontend/dist missing — build the frontend first")
 
 a = Analysis(
     ["launcher.py"],

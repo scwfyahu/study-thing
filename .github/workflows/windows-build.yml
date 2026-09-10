@@ -18,6 +18,17 @@ jobs:
         with: { python-version: "3.11" }
       - name: Build frontend + exe + bundle
         run: powershell -ExecutionPolicy Bypass -File windows/build.ps1
+      - name: Verify bundle contents (frontend must be present)
+        shell: pwsh
+        run: |
+          $tmp = "$PWD/verify-zip"; Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $tmp | Out-Null
+          Expand-Archive -Force StudyThing-windows.zip $tmp
+          $must = @('StudyThing.exe', 'bin/ffmpeg.exe', 'bin/whisper-cli.exe',
+                    'bin/ggml-large-v3-turbo-q5_0.bin', 'frontend/dist/index.html')
+          $missing = $must | Where-Object { -not (Test-Path (Join-Path $tmp $_)) }
+          if ($missing) { Write-Error "bundle missing: $($missing -join ', ')"; exit 1 }
+          Write-Host 'bundle verified: all 5 required files present'
       - uses: actions/upload-artifact@v4
         with:
           name: StudyThing-windows
