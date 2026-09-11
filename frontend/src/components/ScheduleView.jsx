@@ -58,6 +58,7 @@ function ImportModal({ notebooks, state, onClose, onAdded }) {
     setResult(r); onAdded();
   };
 
+  if (!state) return null;
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -214,7 +215,8 @@ export default function ScheduleView({ onOpenNotebook }) {
       </header>
       {err && <div className="banner error">{err}</div>}
       <ImportModal notebooks={notebooks} state={importState}
-        onClose={() => setImportState(null)} onAdded={() => { load(); }} />
+        onClose={() => setImportState(null)} onAdded={() => load()}
+        key={importState ? "on" : "off"} />
       {!tests && <div className="loading">Loading…</div>}
       {tests && tests.length === 0 && (
         <p className="muted">No tests announced yet. Upload recordings, then hit Rescan all.</p>
