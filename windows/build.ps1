@@ -71,7 +71,7 @@ if (-not (Test-Path "$out\bin\ffmpeg.exe")) {
 
 Write-Host "==> whisper.cpp (Vulkan build + large-v3-turbo q5_0 model, ~550 MB)"
 if (-not (Test-Path "$out\bin\whisper-cli.exe")) {
-  Fetch-WithRetry @("https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip", "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.4/whisper-bin-x64.zip") -Out wc.zip
+  Fetch-WithRetry @("https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip", "https://github.com/ggml-org/whisper.cpp/releases/download/b5130/whisper-bin-x64.zip") -Out wc.zip
   Expand-Archive -Force wc.zip wctmp
   $cli = Get-ChildItem -Recurse -Filter "whisper-cli.exe" wctmp | Select-Object -First 1
   Copy-Item $cli.FullName "$out\bin\whisper-cli.exe"
