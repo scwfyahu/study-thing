@@ -97,7 +97,10 @@ def import_schedule(notebook_id: int, text: str, today: str) -> dict:
             if dupe:
                 skipped.append({"title": title, "reason": "already in the schedule"})
                 continue
-            scope = json.dumps([str(s).strip() for s in (a.get("scope") or []) if str(s).strip()],
+            raw_scope = a.get("scope") or []
+            if isinstance(raw_scope, str):
+                raw_scope = [raw_scope]
+            scope = json.dumps([str(s).strip() for s in raw_scope if str(s).strip()],
                                ensure_ascii=False)
             conn.execute(
                 "INSERT INTO tests(notebook_id, recording_id, title, date_text, "
