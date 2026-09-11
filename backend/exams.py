@@ -60,22 +60,39 @@ IMPORT_SCHEMA = {
 }
 
 
-def import_schedule(notebook_id: int, text: str, today: str) -> dict:
+def import_schedule(fallback_notebook_id: int | None, text: str, today: str) -> dict:
     """Extract assessments from a pasted/uploaded schedule and store as tests.
-    Returns {added, skipped} — skipped rows had no resolvable date."""
+
+    MULTI-SUBJECT: the LLM matches every assessment to the right notebook from
+    the live candidate list. fallback_notebook_id (optional) catches items the
+    model cannot place. Returns {added, skipped}.
+    """
+    from . import classify as _classify
+    from . import db as _db
     from . import llm
+
+    profiles = _classify._profiles(_db.get_conn())
+    cand = "\n".join(
+        f"- id {p['id']}: {p['name']}"
+        + (f" (topics: {'; '.join(p['topics'][:12])})" if p["topics"] else "")
+        + (f" (syllabus: {p['syllabus'][:150]})" if p["syllabus"] else "")
+        for p in profiles)
 
     res = llm.chat(
         [{"role": "system", "content":
             "You read a school test/exam schedule (pasted text from a syllabus, "
             "an LMS export, a photo-transcription, anything). Extract EVERY "
             "assessment: quizzes, tests, exams, practicals, major project "
-            "deadlines. Today's date is " + today + ". For each: title (short, "
+            "deadlines. Today's date is " + today + ". This schedule may span "
+            "MULTIPLE subjects/classes. For each assessment: title (short, "
             "specific), date_text (phrase as written), date_iso (ISO YYYY-MM-DD "
             "resolved against today for phrases like 'next Friday'; null only "
             "when genuinely unresolvable), scope (topics covered, from the "
-            "schedule or empty). Skip non-assessment rows (holidays, class "
-            "schedules, grading policies). Return the schema exactly."},
+            "schedule or empty), notebook_id (the id of the matching candidate "
+            "class below, by subject matter; null if none could plausibly cover "
+            "it). Skip non-assessment rows (holidays, class schedules, grading "
+            "policies). CANDIDATE CLASSES:\n" + cand + "\n\n"
+            "Return the schema exactly."},
          {"role": "user", "content": f"Schedule:\n{(text or '')[:20000]}"}],
         schema=IMPORT_SCHEMA, num_ctx=16384, num_predict=4096, temperature=0.1,
     )
@@ -91,9 +108,20 @@ def import_schedule(notebook_id: int, text: str, today: str) -> dict:
             if not date_iso:
                 skipped.append({"title": title, "reason": "no resolvable date"})
                 continue
+            try:
+                nb = int(a.get("notebook_id") or 0)
+            except (TypeError, ValueError):
+                nb = 0
+            valid = {p["id"] for p in profiles}
+            if nb not in valid:
+                nb = fallback_notebook_id or 0
+            if not nb:
+                skipped.append({"title": title,
+                                "reason": "no matching class and no fallback set"})
+                continue
             dupe = conn.execute(
                 "SELECT id FROM tests WHERE notebook_id=? AND title=? COLLATE NOCASE",
-                (notebook_id, title)).fetchone()
+                (nb, title)).fetchone()
             if dupe:
                 skipped.append({"title": title, "reason": "already in the schedule"})
                 continue
@@ -105,7 +133,7 @@ def import_schedule(notebook_id: int, text: str, today: str) -> dict:
             conn.execute(
                 "INSERT INTO tests(notebook_id, recording_id, title, date_text, "
                 "date_iso, scope, confirmed) VALUES (?,?,?,?,?,?,0)",
-                (notebook_id, None, title, date_text or date_iso, date_iso, scope))
+                (nb, None, title, date_text or date_iso, date_iso, scope))
             added.append({"title": title, "date_iso": date_iso})
         conn.commit()
     return {"added": added, "skipped": skipped}

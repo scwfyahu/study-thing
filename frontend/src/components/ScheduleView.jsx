@@ -51,7 +51,7 @@ function ImportModal({ notebooks, state, onClose, onAdded }) {
     setError(""); setBusy(true);
     const r = await fetch("/api/schedule/import", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notebook_id: Number(nbId), text }),
+      body: JSON.stringify({ fallback_notebook_id: Number(nbId) || 0, text }),
     }).then((x) => x.json()).catch((e) => ({ error: String(e) }));
     setBusy(false);
     if (r.error) { setError(r.error); return; }
@@ -63,12 +63,12 @@ function ImportModal({ notebooks, state, onClose, onAdded }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>⇪ Import test schedule</h3>
-        <label className="setup-label">Which class is this schedule for?</label>
+        <label className="setup-label">Schedules may span multiple classes — each extracted test is matched to the right class automatically</label>
         <select value={nbId} onChange={(e) => setNbId(e.target.value)}>
-          <option value="">— choose a notebook —</option>
+          <option value="">None — skip unplaceable items</option>
           {(notebooks || []).map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
         </select>
-        <label className="setup-label">Paste the schedule (or load a text file)</label>
+        <label className="setup-label">Fallback class for items the model can't place (optional)</label>
         <textarea rows={9} value={text} onChange={(e) => setText(e.target.value)}
           placeholder={"e.g.\nQuiz One - September 12 (lesson 1-3)\nQuarter Exam - October 3 (everything so far)"} />
         <label className="setup-label small">…or a file: <input type="file" accept=".txt,.md,.csv,.json" onChange={readFile} /></label>
