@@ -13,6 +13,11 @@ export const api = {
   setupCloud: (key, model) => fetch("/api/setup/cloud", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, model }) }).then(j),
   setupLocal: (model) => fetch("/api/setup/local", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }) }).then(j),
   setupProgress: () => fetch("/api/setup/progress").then(j),
+  importSchedule: (notebook_id, text) =>
+    fetch("/api/schedule/import", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notebook_id, text }),
+    }).then(j),
   home: () => fetch("/api/home").then(j),
   processing: () => fetch("/api/processing").then(j),
   notebooks: () => fetch("/api/notebooks").then(j),

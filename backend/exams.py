@@ -26,8 +26,86 @@ DETECT_SCHEMA = {
 }
 
 
+def _loads_robust(content: str) -> dict:
+    c = re.sub(r"```(?:json)?", "", content or "", flags=re.I).strip()
+    try:
+        return json.loads(c)
+    except Exception:
+        s, e = c.find("{"), c.rfind("}")
+        return json.loads(c[s:e + 1])
+
+
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+IMPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "announcements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "date_text": {"type": "string"},
+                    "date_iso": {"type": "string"},
+                    "scope": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["title"],
+            },
+        }
+    },
+    "required": ["announcements"],
+}
+
+
+def import_schedule(notebook_id: int, text: str, today: str) -> dict:
+    """Extract assessments from a pasted/uploaded schedule and store as tests.
+    Returns {added, skipped} — skipped rows had no resolvable date."""
+    from . import llm
+
+    res = llm.chat(
+        [{"role": "system", "content":
+            "You read a school test/exam schedule (pasted text from a syllabus, "
+            "an LMS export, a photo-transcription, anything). Extract EVERY "
+            "assessment: quizzes, tests, exams, practicals, major project "
+            "deadlines. Today's date is " + today + ". For each: title (short, "
+            "specific), date_text (phrase as written), date_iso (ISO YYYY-MM-DD "
+            "resolved against today for phrases like 'next Friday'; null only "
+            "when genuinely unresolvable), scope (topics covered, from the "
+            "schedule or empty). Skip non-assessment rows (holidays, class "
+            "schedules, grading policies). Return the schema exactly."},
+         {"role": "user", "content": f"Schedule:\n{(text or '')[:20000]}"}],
+        schema=IMPORT_SCHEMA, num_ctx=16384, num_predict=4096, temperature=0.1,
+    )
+    data = _loads_robust(res)
+    added, skipped = [], []
+    with db.get_conn() as conn:
+        for a in (data.get("announcements") or data.get("assessments") or []):
+            title = str(a.get("title", "")).strip()
+            if not title or len(title) < 3:
+                continue
+            date_iso = (a.get("date_iso") or "").strip() or None
+            date_text = str(a.get("date_text") or "").strip()
+            if not date_iso:
+                skipped.append({"title": title, "reason": "no resolvable date"})
+                continue
+            dupe = conn.execute(
+                "SELECT id FROM tests WHERE notebook_id=? AND title=? COLLATE NOCASE",
+                (notebook_id, title)).fetchone()
+            if dupe:
+                skipped.append({"title": title, "reason": "already in the schedule"})
+                continue
+            scope = json.dumps([str(s).strip() for s in (a.get("scope") or []) if str(s).strip()],
+                               ensure_ascii=False)
+            conn.execute(
+                "INSERT INTO tests(notebook_id, recording_id, title, date_text, "
+                "date_iso, scope, confirmed) VALUES (?,?,?,?,?,?,0)",
+                (notebook_id, None, title, date_text or date_iso, date_iso, scope))
+            added.append({"title": title, "date_iso": date_iso})
+        conn.commit()
+    return {"added": added, "skipped": skipped}
 
 
 def _ollama_json(messages: list[dict]) -> dict:

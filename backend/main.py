@@ -1031,6 +1031,24 @@ def delete_test(tid: int):
 
 # ---------------------------------------------------------------- reviewers
 
+@app.post("/api/schedule/import")
+def schedule_import(body: dict, background_tasks: BackgroundTasks):
+    """LLM-extract assessments from pasted/uploaded schedule text -> tests."""
+    import datetime as _dt
+
+    nb_id = int((body or {}).get("notebook_id") or 0)
+    text = (body or {}).get("text") or ""
+    if not nb_id or not text.strip():
+        raise HTTPException(400, "need notebook_id and text")
+    with db.get_conn() as conn:
+        if conn.execute("SELECT 1 FROM notebooks WHERE id=?", (nb_id,)).fetchone() is None:
+            raise HTTPException(404, "notebook not found")
+    try:
+        return exams.import_schedule(nb_id, text, _dt.date.today().isoformat())
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, f"import failed: {e}")
+
+
 @app.get("/api/notebooks/{nb_id}/focus")
 def get_focus(nb_id: int):
     from . import focus

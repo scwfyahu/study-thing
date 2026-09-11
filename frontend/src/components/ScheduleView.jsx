@@ -31,6 +31,66 @@ function DeckButton({ t, refresh, onConfirmScope }) {
           onClick={go} disabled={busy}>{label}</button>;
 }
 
+function ImportModal({ notebooks, state, onClose, onAdded }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [nbId, setNbId] = useState(state?.nbId || "");
+
+  const readFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!/\.(txt|md|csv|json)$/i.test(f.name)) { setError("use .txt/.md/.csv/.json"); return; }
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result || ""));
+    reader.readAsText(f);
+  };
+
+  const go = async () => {
+    setError(""); setBusy(true);
+    const r = await fetch("/api/schedule/import", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notebook_id: Number(nbId), text }),
+    }).then((x) => x.json()).catch((e) => ({ error: String(e) }));
+    setBusy(false);
+    if (r.error) { setError(r.error); return; }
+    setResult(r); onAdded();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>⇪ Import test schedule</h3>
+        <label className="setup-label">Which class is this schedule for?</label>
+        <select value={nbId} onChange={(e) => setNbId(e.target.value)}>
+          <option value="">— choose a notebook —</option>
+          {(notebooks || []).map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+        </select>
+        <label className="setup-label">Paste the schedule (or load a text file)</label>
+        <textarea rows={9} value={text} onChange={(e) => setText(e.target.value)}
+          placeholder={"e.g.\nQuiz One - September 12 (lesson 1-3)\nQuarter Exam - October 3 (everything so far)"} />
+        <label className="setup-label small">…or a file: <input type="file" accept=".txt,.md,.csv,.json" onChange={readFile} /></label>
+        {result && (
+          <div className="small-note muted">
+            Added {result.added?.length || 0}: {(result.added || []).map((a) => `${a.title} (${a.date_iso})`).join(", ") || "—"}
+            {result.skipped?.length > 0 && ` · skipped ${result.skipped.length}`}
+          </div>
+        )}
+        {error && <div className="banner error">{error}</div>}
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>{result ? "Done" : "Cancel"}</button>
+          {!result && (
+            <button className="btn primary" onClick={go} disabled={busy || !nbId || !text.trim()}>
+              {busy ? "Extracting tests…" : "⇪ Import"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ScopeConfirm({ t, onClose, onDone }) {
   const [text, setText] = useState((t.scope || []).join("\n"));
   const [busy, setBusy] = useState(false);
@@ -99,6 +159,8 @@ export default function ScheduleView({ onOpenNotebook }) {
   const [scanning, setScanning] = useState(false);
   const [err, setErr] = useState("");
   const [confirming, setConfirming] = useState(null);
+  const [importState, setImportState] = useState(null); // {nbId, error, added, skipped}
+  const [notebooks, setNotebooks] = useState([]);
 
   const load = useCallback(async () => {
     try {
@@ -111,6 +173,7 @@ export default function ScheduleView({ onOpenNotebook }) {
   useEffect(() => {
     load();
     const t = setInterval(load, 15000);
+    fetch("/api/notebooks").then((r) => r.json()).then(setNotebooks).catch(() => {});
     return () => clearInterval(t);
   }, [load]);
 
@@ -141,12 +204,17 @@ export default function ScheduleView({ onOpenNotebook }) {
           <p className="muted small-note">All tests announced across your subjects — auto-scanned from transcripts.</p>
         </div>
         <div className="nb-actions">
+          <button className="btn" onClick={() => { setImportState({ nbId: notebooks[0]?.id }); }}>
+            ⇪ Import schedule
+          </button>
           <button className="btn primary" onClick={rescan} disabled={scanning}>
             {scanning ? "Scanning all subjects…" : "⟳ Rescan all"}
           </button>
         </div>
       </header>
       {err && <div className="banner error">{err}</div>}
+      <ImportModal notebooks={notebooks} state={importState}
+        onClose={() => setImportState(null)} onAdded={() => { load(); }} />
       {!tests && <div className="loading">Loading…</div>}
       {tests && tests.length === 0 && (
         <p className="muted">No tests announced yet. Upload recordings, then hit Rescan all.</p>

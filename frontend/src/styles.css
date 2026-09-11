@@ -622,3 +622,7 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .setup-option h3 { margin-bottom: var(--space-3xs); font-size: var(--text-md); }
 .setup-row { display: flex; gap: var(--space-3xs); flex-wrap: wrap; align-items: center; margin-top: var(--space-2xs); }
 .setup-row input { flex: 1 1 260px; min-width: 0; }
+.setup-label { font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-muted); margin: var(--space-2xs) 0 var(--space-3xs); display: block; }
+.setup-label.small { text-transform: none; letter-spacing: 0; }
+.setup textarea, .setup select { width: 100%; }
+.split-row input.sel-nb { max-width: 180px; }
