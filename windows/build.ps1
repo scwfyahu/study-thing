@@ -42,9 +42,26 @@ $ver = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "v1.0.0-$(Get-D
 Set-Content "$out\version.txt" $ver
 Write-Host "    version: $ver"
 
+
+function Fetch-WithRetry {
+  param([string[]]$Urls, [string]$Out, [int]$Tries = 4)
+  for ($i = 1; $i -le $Tries; $i++) {
+    foreach ($u in $Urls) {
+      try {
+        Write-Host "    attempt $i -> $u"
+        Invoke-WebRequest $u -OutFile $Out -UseBasicParsing -TimeoutSec 600
+        if ((Get-Item $Out).Length -gt 50000) { return }
+        Remove-Item $Out -ErrorAction SilentlyContinue
+      } catch { Write-Host "    failed: $_" }
+    }
+    Start-Sleep -Seconds (5 * $i)
+  }
+  throw "download failed after $Tries attempts: $Out"
+}
+
 Write-Host "==> ffmpeg (static essentials)"
 if (-not (Test-Path "$out\bin\ffmpeg.exe")) {
-  Invoke-WebRequest "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ff.zip
+  Fetch-WithRetry @("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip") -OutFile ff.zip
   Expand-Archive -Force ff.zip ff
   $ffRoot = (Get-ChildItem ff -Directory | Select-Object -First 1).FullName
   Copy-Item "$ffRoot\bin\ffmpeg.exe" "$out\bin\ffmpeg.exe"
@@ -54,7 +71,7 @@ if (-not (Test-Path "$out\bin\ffmpeg.exe")) {
 
 Write-Host "==> whisper.cpp (Vulkan build + large-v3-turbo q5_0 model, ~550 MB)"
 if (-not (Test-Path "$out\bin\whisper-cli.exe")) {
-  Invoke-WebRequest "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip" -OutFile wc.zip
+  Fetch-WithRetry @("https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip", "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.4/whisper-bin-x64.zip") -OutFile wc.zip
   Expand-Archive -Force wc.zip wctmp
   $cli = Get-ChildItem -Recurse -Filter "whisper-cli.exe" wctmp | Select-Object -First 1
   Copy-Item $cli.FullName "$out\bin\whisper-cli.exe"
@@ -63,8 +80,7 @@ if (-not (Test-Path "$out\bin\whisper-cli.exe")) {
   Remove-Item -Recurse -Force wctmp, wc.zip
 }
 if (-not (Test-Path "$out\bin\ggml-large-v3-turbo-q5_0.bin")) {
-  Invoke-WebRequest "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin" `
-    -OutFile "$out\bin\ggml-large-v3-turbo-q5_0.bin"
+  Fetch-WithRetry @("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin") -OutFile "$out\bin\ggml-large-v3-turbo-q5_0.bin"
 }
 
 # ---------- 5. zip ----------
