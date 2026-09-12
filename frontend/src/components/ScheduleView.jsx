@@ -98,28 +98,31 @@ function ScopeConfirm({ t, onClose, onDone }) {
   const [guessing, setGuessing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [prefilled, setPrefilled] = useState(false);
+  const [touched, setTouched] = useState(false);
 
-  // auto-guess scope on open; keep retrying forever with visible feedback
+  // auto-guess scope on open ONLY while untouched; user edits win forever
   useEffect(() => {
     if (prefilled || (t.scope || []).length) { setPrefilled(true); return; }
     let alive = true, n = 0;
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     (async () => {
-      while (alive) {
+      while (alive && !touched) {
         n += 1;
         setAttempt(n); setGuessing(true);
         try {
           const r = await api.guessTestScope(t.id);
+          if (touched) { setGuessing(false); return; }  // user wins
           if (r && r.scope && r.scope.length) {
             setText(r.scope.join("\n")); setGuessing(false); return;
           }
         } catch {}
+        if (touched) { setGuessing(false); return; }
         setGuessing(false);
         await sleep(3000);
       }
     })();
     return () => { alive = false; };
-  }, [t.id]);
+  }, [t.id]);  // note: deliberate — touched accessed via latest render closure
 
   const confirm = async () => {
     setBusy(true);

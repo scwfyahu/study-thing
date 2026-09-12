@@ -20,21 +20,30 @@ def _ollama(messages: list[dict], schema=None, timeout=600, retries=0) -> str:
 
 
 def guess_scope(notebook_name: str, syllabus_topics: list[str], announcement: str,
-                 retries: int = 0) -> list[str]:
-    """Auto-guess a quiz's scope: most relevant syllabus topics for the announced assessment."""
+                 lesson_content: str = "", retries: int = 0) -> list[str]:
+    """Auto-guess a quiz's scope from the syllabus AND the actual lesson content
+    (slide outlines / transcript slices), so scopes stay detailed and grounded."""
+    lesson_note = ''
+    if lesson_content:
+        lesson_note = ('\n\nACTUAL LESSON CONTENT from this class (outlines / '
+                       'transcripts):\n' + lesson_content[:24000])
     try:
         raw = _ollama([
             {"role": "system", "content": (
-                "You estimate the study scope for an upcoming assessment. Given the course's "
-                "syllabus topics and what the teacher announced, return the syllabus topics the "
-                "assessment most likely covers (usually 2-5). Use EXACT syllabus topic text. "
-                "If a topic isn't in the syllabus, phrase it as a short scope line. "
-                "Return the schema exactly."
+                "You estimate the study scope for an upcoming assessment. Given the "
+                "course topics, what the teacher announced, and the ACTUAL lesson "
+                "content, return a DETAILED study scope: 6-12 specific subtopics the "
+                "student must master, in plain line form (one per item). Ground it in "
+                "the lesson content whenever it's available. Use precise terms, not "
+                "vague lines. If a topic isn't in the syllabus but is in the lessons, "
+                "PHRASE IT AS IT APPEARS in the lesson content."
+                "\n\nReturn the schema exactly."
             )},
             {"role": "user", "content": (
                 f"Course: {notebook_name}\n"
                 f"Syllabus topics:\n" + "\n".join(f"- {t}" for t in syllabus_topics) +
                 f"\n\nTeacher's announcement:\n{announcement}"
+                f"{lesson_content}"
             )},
         ], SCOPE_SCHEMA, timeout=300, retries=retries)
         data = json.loads(raw)

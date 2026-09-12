@@ -985,6 +985,23 @@ def guess_test_scope(tid: int):
             "SELECT name, topics, syllabus FROM notebooks WHERE id=?",
             (t["notebook_id"],)).fetchone()
     syllabus_topics = [x.strip() for x in (nb["topics"] or "").splitlines() if x.strip()]
+    _focus = conn.execute(
+        "SELECT subtopics FROM focus_topics WHERE notebook_id=?", (t["notebook_id"],)
+    ).fetchall()
+    _focus_lines = []
+    for _f in _focus:
+        try:
+            _l = json.loads(_f["subtopics"] or "[]")
+        except Exception:
+            _l = []
+        _focus_lines += [str(x).strip() for x in _l if str(x).strip()]
+    _rows = conn.execute(
+        "SELECT c.text FROM chunks c JOIN recordings r ON r.id=c.recording_id"
+        " WHERE r.notebook_id=? ORDER BY r.id, c.idx",
+        (t["notebook_id"],)).fetchall()
+    _text = "\n\n".join(r["text"] for r in _rows if r["text"])
+    if len(_text) > 24000:
+        _text = _text[:12000] + "\n\n[…middle omitted…]\n\n" + _text[-12000:]
     ann = f"{t['title']} ({t['date_text'] or ''})"
     try:
         sc = _json.loads(t["scope"] or "[]")
@@ -993,7 +1010,10 @@ def guess_test_scope(tid: int):
     except Exception:
         pass
     try:
+        focus_full = "\n".join(f"- {x}" for x in _focus_lines[:80])
         scope = deckgen.guess_scope(nb["name"], syllabus_topics, ann,
+                                    lesson_content=(_text +
+                                      f"\n\nDETAILED SUBTOPIC CANDIDATES drawn from the lessons:\n{focus_full}"),
                                     retries=1)
     except Exception as e:
         raise HTTPException(502, f"scope guess failed: {e}")
