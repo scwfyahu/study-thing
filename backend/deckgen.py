@@ -20,7 +20,8 @@ def _ollama(messages: list[dict], schema=None, timeout=600, retries=0) -> str:
 
 
 def guess_scope(notebook_name: str, syllabus_topics: list[str], announcement: str,
-                 lesson_content: str = "", retries: int = 0) -> list[str]:
+                 lesson_content: str = "", retries: int = 0,
+                 candidate_subtopics: list[str] | None = None) -> list[str]:
     """Auto-guess a quiz's scope from the syllabus AND the actual lesson content
     (slide outlines / transcript slices), so scopes stay detailed and grounded."""
     lesson_note = ''
@@ -48,10 +49,16 @@ def guess_scope(notebook_name: str, syllabus_topics: list[str], announcement: st
         ], SCOPE_SCHEMA, timeout=300, retries=retries)
         data = json.loads(raw)
         scope = [str(t).strip() for t in data.get("scope", []) if str(t).strip()]
+        # a weak model ignoring the 6-12 mandate gets the deterministic
+        # lesson-grounded candidates instead (detailed > terse)
+        if len(scope) < 6 and candidate_subtopics and len(candidate_subtopics) >= 6:
+            return candidate_subtopics[:12]
         # fall back to the full syllabus rather than an empty scope
         return scope or syllabus_topics
     except Exception:
-        # LLM unreachable/flaky — scope = everything on the syllabus
+        # LLM unreachable/flaky — use lesson-grounded candidates if present
+        if candidate_subtopics and len(candidate_subtopics) >= 6:
+            return candidate_subtopics[:12]
         return syllabus_topics
 
 

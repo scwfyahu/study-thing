@@ -1015,12 +1015,16 @@ def guess_test_scope(tid: int, body: dict | None = None):
             ann += f". Scope mentioned: {', '.join(sc)}"
     except Exception:
         pass
+    _cands = []
+    for _f in _focus_lines:
+        if str(_f).strip() and _f not in _cands:
+            _cands.append(str(_f).strip())
+    focus_full = "\n".join(f"- {x}" for x in _focus_lines[:80])
     try:
-        focus_full = "\n".join(f"- {x}" for x in _focus_lines[:80])
         scope = deckgen.guess_scope(nb["name"], syllabus_topics, ann,
                                     lesson_content=(_text +
                                       f"\n\nDETAILED SUBTOPIC CANDIDATES drawn from the lessons:\n{focus_full}"),
-                                    retries=1)
+                                    candidate_subtopics=_cands, retries=1)
     except Exception as e:
         raise HTTPException(502, f"scope guess failed: {e}")
     if body and body.get("save"):
