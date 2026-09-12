@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, deckgen, exams, notes, pipeline, quizzes, reviewers, selfupdate, setupwizard as setupw, srs, syllabus
+from . import db, deckgen, exams, mediaclean, notes, pipeline, quizzes, reviewers, srs, selfupdate, setupwizard as setupw, syllabus
 
 logger = logging.getLogger("studything.api")
 from .tunnel import router as tunnel_router
@@ -41,6 +41,8 @@ ALLOWED_EXT = {
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init_schema()
+    import threading as _t
+    _t.Thread(target=mediaclean._worker, daemon=True).start()
     yield
 
 
@@ -1348,6 +1350,61 @@ def update_install(body: dict):
         raise HTTPException(400, "bad update url")
     selfupdate.install(url)
     return {"ok": True}  # never reached on success — app exits
+
+
+@app.get("/api/export/transcripts")
+def export_transcripts():
+    """Zip of every recording transcript, foldered by subject (notebook_name/<recording>.txt)."""
+    import re as _re
+
+    with db.get_conn() as conn:
+        nbs = conn.execute("SELECT id, name FROM notebooks").fetchall()
+        grouped = {}
+        used = set()
+        for nb in nbs:
+            key = _re.sub(r"[^-a-zA-Z0-9 _]+", "_", nb["name"]).strip() or f"Notebook-{nb['id']}"
+            while key in used:
+                key += f"-{nb['id']}"
+            used.add(key)
+            recs = conn.execute(
+                "SELECT id, original_name, recorded_at, created_at, duration_sec"
+                " FROM recordings WHERE notebook_id=? AND kind='recording'", (nb["id"],)
+            ).fetchall()
+            files = []
+            for r in recs:
+                chunks = conn.execute(
+                    "SELECT text FROM chunks WHERE recording_id=? ORDER BY idx",
+                    (r["id"],)).fetchall()
+                text = "\n\n".join(c["text"] for c in chunks).strip()
+                base = _re.sub(r"[^a-zA-Z0-9._ -]+", "_", r["original_name"]).strip() or f"recording-{r['id']}"
+                if not base.lower().endswith(".txt"):
+                    base += ".txt"
+                header = (
+                    f"{r['original_name']}\n"
+                    f"Subject: {nb['name']}\n"
+                    f"Recorded: {r['recorded_at'] or r['created_at']}\n"
+                    f"Duration: {round((r['duration_sec'] or 0)/60.0)} min\n"
+                    + "-" * 60 + "\n\n"
+                )
+                files.append((base, header + text))
+            grouped[key] = files
+
+    io_target_aliases = __import__("io")
+    zip_path = AUDIO_DIR / "transcripts-export.zip"
+    import zipfile as _zip
+
+    with _zip.ZipFile(zip_path, "w", _zip.ZIP_DEFLATED) as z:
+        for folder, files in grouped.items():
+            for base, content in files:
+                if (folder + "/" + base) in z.namelist():
+                    continue
+                z.writestr(f"{folder}/{base}", content)
+
+    return FileResponse(
+        zip_path, media_type="application/zip",
+        filename="StudyThing-transcripts.zip",
+        background=BackgroundTask(lambda: zip_path.unlink(missing_ok=True)),
+    )
 
 
 @app.get("/api/setup/status")

@@ -157,6 +157,7 @@ export default function App() {
               {upgrading ? "Downloading update…" : `⟳ Update ${update.latest}`}
             </button>
           )}
+          <a className="theme-toggle" href="/api/export/transcripts">↧ Export transcripts</a>
           <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {theme === "dark" ? "Light mode" : "Dark mode"}
           </button>

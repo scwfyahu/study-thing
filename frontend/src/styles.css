@@ -626,3 +626,4 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .setup-label.small { text-transform: none; letter-spacing: 0; }
 .setup textarea, .setup select { width: 100%; }
 .split-row input.sel-nb { max-width: 180px; }
+.side-export-btn { margin-top: var(--space-3xs); }
