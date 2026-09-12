@@ -121,7 +121,10 @@ export const api = {
   tests: (nbId) => fetch(`/api/notebooks/${nbId}/tests`).then(j),
   scanTests: (nbId) =>
     fetch(`/api/notebooks/${nbId}/tests/scan`, { method: "POST" }).then(j),
-  guessTestScope: (id, signal) => fetch(`/api/tests/${id}/guess`, {method:"POST", signal}).then(j),
+  guessTestScope: (id, opts) => fetch(`/api/tests/${id}/guess`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts || {}), signal: opts?.signal,
+    }).then(j),
   confirmTest: (id, scope) => fetch(`/api/tests/${id}/confirm`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scope})}).then(j),
   testDeck: (id) => fetch(`/api/tests/${id}/deck`, { method: "POST" }).then(j),
   deleteTest: (id) => fetch(`/api/tests/${id}`, { method: "DELETE" }).then(j),

@@ -974,8 +974,14 @@ def test_deck(tid: int, background_tasks: BackgroundTasks):
 
 
 @app.post("/api/tests/{tid}/guess")
-def guess_test_scope(tid: int):
+def guess_test_scope(tid: int, body: dict | None = None):
     """Auto-guess a test's scope from its announcement + notebook syllabus."""
+    import json as _j
+    if body is None:
+        try:
+            body = {}
+        except Exception:
+            body = {}
     import json as _json
     with db.get_conn() as conn:
         t = conn.execute("SELECT * FROM tests WHERE id=?", (tid,)).fetchone()
@@ -1017,6 +1023,11 @@ def guess_test_scope(tid: int):
                                     retries=1)
     except Exception as e:
         raise HTTPException(502, f"scope guess failed: {e}")
+    if body and body.get("save"):
+        with db.get_conn() as conn:
+            conn.execute("UPDATE tests SET scope=? WHERE id=?",
+                         (json.dumps(scope, ensure_ascii=False), tid))
+            conn.commit()
     return {"scope": scope}
 
 

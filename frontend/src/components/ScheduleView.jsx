@@ -110,7 +110,7 @@ function ScopeConfirm({ t, onClose, onDone }) {
         n += 1;
         setAttempt(n); setGuessing(true);
         try {
-          const r = await api.guessTestScope(t.id);
+          const r = await api.guessTestScope(t.id, { save: false });
           if (touched) { setGuessing(false); return; }  // user wins
           if (r && r.scope && r.scope.length) {
             setText(r.scope.join("\n")); setGuessing(false); return;
@@ -136,6 +136,18 @@ function ScopeConfirm({ t, onClose, onDone }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Confirm scope — {t.title}</h3>
         <label>Scope <span className="muted">(flashcards will only cover these)</span></label>
+        <button className="btn small" style={{ margin: "4px 0" }}
+          onClick={async () => {
+            setGuessing(true);
+            try {
+              const r = await api.guessTestScope(t.id, { save: true });
+              if (r?.scope?.length) { setText(r.scope.join("\n")); setTouched(false); }
+            } catch {}
+            setGuessing(false);
+          }}
+          disabled={guessing || busy} title="Re-run the recording-grounded scope guess">
+          ⟳ Regenerate scope
+        </button>
         {guessing ? (
           <div className="loading" style={{ margin: "6px 0" }}>
             Guessing scope from syllabus + announcement… (attempt {attempt})
