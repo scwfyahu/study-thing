@@ -298,7 +298,7 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
         <input
           ref={fileInput}
           type="file"
-          accept="audio/*,video/mp4,.m4a,.mp3,.wav,.webm,.mov"
+          accept="audio/*,video/*,.m4a,.mp3,.wav,.webm,.mov,.flac,.opus,.aac,.m4b,.wma,.aif,.aiff,image/*,.pdf,.txt,.md,.csv,.docx"
           multiple
           hidden
           onChange={(e) => { uploadFiles([...e.target.files]); e.target.value = ""; }}

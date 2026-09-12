@@ -104,7 +104,7 @@ export default function SuggestView({ notebooks, onChanged, onOpenNotebook }) {
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); upload([...e.dataTransfer.files]); }}
         onClick={() => fileInput.current?.click()}>
-        <input ref={fileInput} type="file" accept="audio/*,video/mp4,.m4a,.mp3,.wav,.webm,.mov,.png,.jpg,.jpeg,.pdf" multiple hidden
+        <input ref={fileInput} type="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.webm,.mov,.flac,.opus,.aac,image/*,.pdf,.txt,.md,.csv,.docx" multiple hidden
           onChange={(e) => { upload([...e.target.files]); e.target.value = ""; }} />
         {busy ? "Uploading…" : "Drop a batch here — each is transcribed, auto-classified, and held for your approval"}
       </div>
