@@ -994,13 +994,25 @@ def guess_test_scope(tid: int, body: dict | None = None):
     _focus = conn.execute(
         "SELECT subtopics FROM focus_topics WHERE notebook_id=?", (t["notebook_id"],)
     ).fetchall()
-    _focus_lines = []
+    
+    # relevance-first: rank Focus units by keyword overlap with the announcement
+    # (unit titles vs 'History long quiz (Sept 15)') and draw the scope only
+    # from the matching unit(s) — no cross-subject noise.
+    import re as _re2
+    _ann_words = set(w for w in _re2.split(r"[^a-z0-9]+", (t["title"] + " " + (t["date_text"] or "")).lower()) if len(w) > 3)
+    _scored = []
     for _f in _focus:
         try:
             _l = json.loads(_f["subtopics"] or "[]")
         except Exception:
             _l = []
-        _focus_lines += [str(x).strip() for x in _l if str(x).strip()]
+        _unit_words = set(w for w in _re2.split(r"[^a-z0-9]+", str(_l).lower()) if len(w) > 3)
+        _overlap = len(_ann_words & _unit_words)
+        _scored.append((_overlap, _l))
+    _scored.sort(reverse=True)
+    _top = _scored[0] if _scored else (0, [])
+    _focus_lines = [str(x).strip() for x in _top[1] if str(x).strip()] if _top[0] > 0 else \
+                   [str(x).strip() for f2 in _scored for x in f2[1] if str(x).strip()]
     _rows = conn.execute(
         "SELECT c.text FROM chunks c JOIN recordings r ON r.id=c.recording_id"
         " WHERE r.notebook_id=? ORDER BY r.id, c.idx",

@@ -38,6 +38,16 @@ def guess_scope(notebook_name: str, syllabus_topics: list[str], announcement: st
                 "the lesson content whenever it's available. Use precise terms, not "
                 "vague lines. If a topic isn't in the syllabus but is in the lessons, "
                 "PHRASE IT AS IT APPEARS in the lesson content."
+                "\n\nRELEVANCE DISCIPLINE: only include subtopics a teacher would "
+                "actually put on THIS assessment given its announcement topic. Skip "
+                "subtopics that merely co-occur in the recording but belong to a "
+                "different subject/lesson (a science tangent in a history recording "
+                "does not belong in a history quiz scope). Prefer breadth over "
+                "trivia: each line should map to a studyable unit of knowledge, "
+                "not a one-sentence anecdote."
+                "\n\nFORBIDDEN: returning the course/unit name as the whole scope. "
+                "FORBIDDEN: fewer than 6 items when relevant lesson content is present. "
+                "Each scope line must be a single concrete subtopic."
                 "\n\nReturn the schema exactly."
             )},
             {"role": "user", "content": (
@@ -118,7 +128,7 @@ def generate_deck_cards(deck_id: int) -> int:
                 with db.get_conn() as conn:
                     conn.execute(
                         "INSERT INTO cards(notebook_id, recording_id, deck_id, question, answer, topic, position) "
-                        "SELECT notebook_id, id, ?, ?, ?, ? FROM recordings WHERE id = ?",
+                        "SELECT notebook_id, id, ?, ?, ?, ?, ? FROM recordings WHERE id = ?",
                         (deck_id, q, a, topic, total, rec_id),
                     )
                 total += 1
