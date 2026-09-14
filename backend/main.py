@@ -1414,8 +1414,8 @@ def export_transcripts():
                 key += f"-{nb['id']}"
             used.add(key)
             recs = conn.execute(
-                "SELECT id, original_name, recorded_at, created_at, duration_sec"
-                " FROM recordings WHERE notebook_id=? AND kind='recording'", (nb["id"],)
+                "SELECT id, original_name, recorded_at, created_at, duration_sec, kind"
+                " FROM recordings WHERE notebook_id=? AND kind IN ('recording','notes')", (nb["id"],)
             ).fetchall()
             files = []
             for r in recs:
@@ -1423,11 +1423,14 @@ def export_transcripts():
                     "SELECT text FROM chunks WHERE recording_id=? ORDER BY idx",
                     (r["id"],)).fetchall()
                 text = "\n\n".join(c["text"] for c in chunks).strip()
-                base = _re.sub(r"[^a-zA-Z0-9._ -]+", "_", r["original_name"]).strip() or f"recording-{r['id']}"
+                base = _re.sub(r"[^a-zA-Z0-9._ -]+", "_", r["original_name"]).strip() or f"item-{r['id']}"
+                if r["kind"] == "notes" and not base.startswith("[OUTLINE] "):
+                    base = f"[OUTLINE] {base}"
                 if not base.lower().endswith(".txt"):
                     base += ".txt"
                 header = (
                     f"{r['original_name']}\n"
+                    f"Type: {'Note outline (slides/notes read by AI)' if r['kind'] == 'notes' else 'Lecture recording transcript'}\n"
                     f"Subject: {nb['name']}\n"
                     f"Recorded: {r['recorded_at'] or r['created_at']}\n"
                     f"Duration: {round((r['duration_sec'] or 0)/60.0)} min\n"
