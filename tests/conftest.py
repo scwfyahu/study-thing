@@ -10,6 +10,7 @@ os.environ["STUDY_LLM_PROVIDER"] = "ollama"
 os.environ["OPENROUTER_API_KEY"] = ""
 os.environ.pop("STUDY_JEV_API_KEY", None)
 os.environ.pop("TYPESAFE_API_KEY", None)
+os.environ["STUDY_LAYA"] = "0"  # tests must never download/load weights
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

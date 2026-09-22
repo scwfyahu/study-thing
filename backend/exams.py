@@ -166,20 +166,26 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
     for b in blocks:
         if len(b.split()) < 30:
             continue
-        # System One fast path: Jev noul prefilter — only announcement-bearing
-        # blocks pay for an LLM extraction. Any failure -> scan with LLM as before.
+        # System One fast path: typed noul prefilter (Laya local, Jev hosted) —
+        # only announcement-bearing blocks pay for an LLM extraction. On any
+        # failure the LLM scans the block as before.
         from . import jev as _jev
-        if _jev.available():
+        from . import laya_client as _laya
+        _decision = None  # None = no engine answered -> LLM scans unfiltered
+        for engine in (_laya, _jev):
+            if not engine.available():
+                continue
             try:
-                p = _jev.noul(
+                _decision = engine.noul(
                     b, "has_announcement",
                     "Does this lecture transcript block announce a concrete "
                     "assessment (quiz, test, exam, practical, major deadline) "
                     "with a name or a date? Pure teaching content = false.")
-                if p < 0.55:  # recall-first threshold
-                    continue
+                break
             except Exception as e:  # noqa: BLE001
-                logger.warning("Jev prefilter failed, LLM scans block anyway: %s", e)
+                logger.warning("decision prefilter failed, trying next engine: %s", e)
+        if _decision is not None and _decision < 0.55:  # recall-first threshold
+            continue  # teaching-only block: no LLM extraction needed
         try:
             res = _ollama_json([
                 {"role": "system", "content": (

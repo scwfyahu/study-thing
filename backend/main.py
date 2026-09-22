@@ -43,6 +43,8 @@ async def lifespan(_app: FastAPI):
     db.init_schema()
     import threading as _t
     _t.Thread(target=mediaclean._worker, daemon=True).start()
+    from . import laya_client
+    laya_client.warm_up()
     yield
 
 
