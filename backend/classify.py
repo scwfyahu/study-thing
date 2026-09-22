@@ -106,6 +106,36 @@ def classify(text: str, notebooks: list[dict] | None = None) -> dict:
         + (("\nSyllabus: " + p["syllabus"]) if p["syllabus"] else "")
         for p in notebooks
     )
+    # --- System One fast path: Jev typed decision (choice over notebook ids).
+    # On any failure we fall through to the LLM path below.
+    from . import jev as _jev
+
+    if _jev.available():
+        try:
+            criteria = {
+                str(p["id"]): (
+                    p["name"]
+                    + (f" — topics: {'; '.join(p['topics'][:8])}" if p["topics"] else "")
+                    + (f" — syllabus: {p['syllabus'][:150]}" if p["syllabus"] else "")
+                )
+                for p in notebooks
+            }
+            criteria["0"] = "None of these — noise or an unrelated subject"
+            r = _jev.choice(
+                sample, "notebook",
+                "Which class notebook does this lecture transcript belong to? "
+                "Return 0 only if no listed class could plausibly contain this "
+                "material (noise, chit-chat, unrelated subject).",
+                criteria)
+            nid = _resolve_id(r["choice"], notebooks)
+            name = next((p["name"] for p in notebooks if p["id"] == nid), None)
+            reason = (f"Jev typed decision — choice {r['choice']} "
+                      f"(calibrated confidence {r['confidence']:.2f})")
+            return {"notebook_id": nid, "name": name,
+                    "confidence": round(min(1.0, max(0.0, r["confidence"])), 2),
+                    "topics": [], "reason": reason}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Jev classify failed, falling back to LLM: %s", e)
     try:
         res = _ollama_json([
             {"role": "system", "content": (

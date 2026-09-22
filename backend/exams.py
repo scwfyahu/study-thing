@@ -1,9 +1,12 @@
 """Detect announced tests/quizzes/exams + their scope from lecture transcripts."""
 import json
+import logging
 import re
 
 from . import db
 from .config import OLLAMA_MODEL, OLLAMA_URL
+
+logger = logging.getLogger("studything.exams")
 
 DETECT_SCHEMA = {
     "type": "object",
@@ -163,6 +166,20 @@ def scan_recording(recording_id: int, notebook_id: int, today: str) -> int:
     for b in blocks:
         if len(b.split()) < 30:
             continue
+        # System One fast path: Jev noul prefilter — only announcement-bearing
+        # blocks pay for an LLM extraction. Any failure -> scan with LLM as before.
+        from . import jev as _jev
+        if _jev.available():
+            try:
+                p = _jev.noul(
+                    b, "has_announcement",
+                    "Does this lecture transcript block announce a concrete "
+                    "assessment (quiz, test, exam, practical, major deadline) "
+                    "with a name or a date? Pure teaching content = false.")
+                if p < 0.55:  # recall-first threshold
+                    continue
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Jev prefilter failed, LLM scans block anyway: %s", e)
         try:
             res = _ollama_json([
                 {"role": "system", "content": (

@@ -43,8 +43,9 @@ def provider() -> str:
 
 
 def status() -> dict:
-    """{provider, available, model, error} — cheap liveness check for the UI."""
+    """{provider, available, model, error, jev_enabled} — cheap liveness check."""
     from .config import OLLAMA_MODEL
+    from . import jev as _jev
     last = None
     try:
         if provider() == "openrouter":
@@ -64,6 +65,7 @@ def status() -> dict:
     return {
         "provider": provider(),
         "available": available,
+        "jev_enabled": _jev.available(),
         "model": os.environ.get("STUDY_OPENROUTER_MODEL", OLLAMA_MODEL),
         "error": "" if available else f"{type(last).__name__}: {last}",
     }

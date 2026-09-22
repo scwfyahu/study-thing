@@ -8,6 +8,8 @@ os.environ["STUDY_DATA_DIR"] = _TMP
 # never let a real key/config leak into tests
 os.environ["STUDY_LLM_PROVIDER"] = "ollama"
 os.environ["OPENROUTER_API_KEY"] = ""
+os.environ.pop("STUDY_JEV_API_KEY", None)
+os.environ.pop("TYPESAFE_API_KEY", None)
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
