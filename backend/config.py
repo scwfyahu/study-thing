@@ -35,7 +35,7 @@ RNNOISE_MODEL = Path(os.environ.get("STUDY_RNNOISE", DATA_DIR / "rnnoise.rnn"))
 
 # ASR model per backend (env override wins; mlx-community names are auto-swapped off-MLX)
 WHISPER_MODEL = os.environ.get("STUDY_WHISPER_MODEL", _ASR_DEFAULT_MODEL[ASR_BACKEND])
-WHISPER_LANGUAGE = os.environ.get("STUDY_WHISPER_LANGUAGE", "en")  # "auto" to detect
+WHISPER_LANGUAGE = os.environ.get("STUDY_WHISPER_LANGUAGE", "auto")  # auto keeps Taglish terms to detect
 
 # whisper.cpp backend (AMD/Intel GPU via Vulkan on Windows)
 WHISPERCPP_BIN = os.environ.get("STUDY_WHISPERCPP_BIN", "")  # default: PATH or data/whispercpp/
