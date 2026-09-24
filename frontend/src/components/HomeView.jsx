@@ -51,9 +51,9 @@ export default function HomeView({ onOpenNotebook, onOpenSuggest, onOpenSchedule
 
       {empty ? (
         <div className="empty" style={{ marginTop: "6vh" }}>
-          <h2>Your classes, distilled to flashcards.</h2>
+          <h2>Your classes, distilled into study guides.</h2>
           <p>Create a notebook for each class, then drop in your lecture recordings.</p>
-          <p className="hint">Noise gets cleaned (ffmpeg) → transcribed locally (whisper.cpp) → turned into flashcards (LLM).</p>
+          <p className="hint">Noise gets cleaned (ffmpeg) → transcribed locally (whisper.cpp) → picked into a reviewer (LLM + Jev).</p>
           <p style={{ marginTop: 12 }}>
             <button className="btn primary" onClick={onNewNotebook}>＋ New notebook</button>
           </p>
@@ -63,9 +63,6 @@ export default function HomeView({ onOpenNotebook, onOpenSuggest, onOpenSchedule
           <div className="stat-row">
             <Stat n={t.notebooks} label="classes" onClick={() => {}} />
             <Stat n={t.recordings} label="recordings" />
-            <Stat n={t.cards} label="flashcards" />
-            <Stat n={t.decks} label="decks" />
-            <Stat n={t.quizzes} label="quizzes" />
             <Stat n={t.inbox} label="inbox" onClick={t.inbox > 0 ? onOpenSuggest : undefined} />
           </div>
 

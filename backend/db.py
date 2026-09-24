@@ -166,6 +166,13 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE focus_topics ADD COLUMN mistakes TEXT")
     if "split_proposal" not in rcols:
         conn.execute("ALTER TABLE recordings ADD COLUMN split_proposal TEXT")
+    vcols = {r[1] for r in conn.execute("PRAGMA table_info(reviewers)")}
+    if "status" not in vcols:
+        conn.execute("ALTER TABLE reviewers ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'")
+    if "source_ids" not in vcols:
+        conn.execute("ALTER TABLE reviewers ADD COLUMN source_ids TEXT")
+    if "error" not in vcols:
+        conn.execute("ALTER TABLE reviewers ADD COLUMN error TEXT")
     _drop_not_null_notebook_id(conn)
 
 

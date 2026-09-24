@@ -4,7 +4,7 @@ import NotebookModal from "./components/NotebookModal.jsx";
 import NotebookView from "./components/NotebookView.jsx";
 import ScheduleView from "./components/ScheduleView.jsx";
 import SharePanel from "./components/SharePanel.jsx";
-import StudyView from "./components/StudyView.jsx";
+import ReviewerView from "./components/ReviewerView.jsx";
 import SuggestView from "./components/SuggestView.jsx";
 import HomeView from "./components/HomeView.jsx";
 import SetupView from "./components/SetupView.jsx";
@@ -47,7 +47,8 @@ export default function App() {
   const [viewSchedule, setViewSchedule] = useState(false);
   const [viewSuggest, setViewSuggest] = useState(false);
   const [modal, setModal] = useState(null); // {mode:'create'} | {mode:'edit', nb}
-  const [study, setStudy] = useState(null); // {title, notebookId}
+  const [viewReviewer, setViewReviewer] = useState(false);
+  const [revNotebookId, setRevNotebookId] = useState(null);
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
@@ -86,7 +87,7 @@ export default function App() {
 
   const deleteNotebook = async (nb, e) => {
     e.stopPropagation();
-    if (!(await askConfirm(`Delete notebook "${nb.name}" and all its recordings + flashcards?`))) return;
+    if (!(await askConfirm(`Delete notebook "${nb.name}" and all its recordings?`))) return;
     await api.deleteNotebook(nb.id);
     if (currentId === nb.id) setCurrentId(null);
     refresh();
@@ -101,21 +102,28 @@ export default function App() {
     <div className="layout">
       <aside className="sidebar">
         <h1 className="brand" style={{cursor:"pointer"}} title="Home"
-            onClick={() => { setViewSuggest(false); setViewSchedule(false); setCurrentId(null); setStudy(null); }}>Study<span>Thing</span></h1>
+            onClick={() => { setViewSuggest(false); setViewSchedule(false); setViewReviewer(false); setCurrentId(null); }}>Study<span>Thing</span></h1>
         <nav className="nb-list">
           <div className="side-h">Inbox</div>
           <div
             className={"nb-item" + (viewSuggest ? " active" : "")}
-            onClick={() => { setViewSuggest(true); setViewSchedule(false); setCurrentId(null); setStudy(null); }}
+            onClick={() => { setViewSuggest(true); setViewSchedule(false); setViewReviewer(false); setCurrentId(null); }}
           >
             <div className="nb-name" title="Suggest notebook">Suggest notebook {inboxN > 0 && <span className="badge-count">{inboxN}</span>}</div>
             <div className="nb-meta">unfiled transcripts</div>
           </div>
           <div
-            className={"nb-item" + (viewSchedule ? " active" : "")}
-            onClick={() => { setViewSchedule(true); setViewSuggest(false); setStudy(null); }}
+            className={"nb-item" + (viewReviewer ? " active" : "")}
+            onClick={() => { setViewReviewer(true); setViewSuggest(false); setViewSchedule(false); setCurrentId(null); setRevNotebookId(null); }}
           >
-            <div className="nb-name" title="Quiz schedule">Quiz schedule</div>
+            <div className="nb-name" title="Build a study guide from selected recordings">Reviewer</div>
+            <div className="nb-meta">recordings → study guide</div>
+          </div>
+          <div
+            className={"nb-item" + (viewSchedule ? " active" : "")}
+            onClick={() => { setViewSchedule(true); setViewSuggest(false); setViewReviewer(false); setCurrentId(null); }}
+          >
+            <div className="nb-name" title="Test schedule">Test schedule</div>
             <div className="nb-meta">all subjects</div>
           </div>
           <div className="side-split" />
@@ -123,11 +131,11 @@ export default function App() {
           {notebooks.map((nb) => (
             <div
               key={nb.id}
-              className={"nb-item" + (nb.id === currentId && !viewSchedule && !viewSuggest ? " active" : "")}
-              onClick={() => { setCurrentId(nb.id); setViewSchedule(false); setViewSuggest(false); setStudy(null); }}
+              className={"nb-item" + (nb.id === currentId && !viewSchedule && !viewSuggest && !viewReviewer ? " active" : "")}
+              onClick={() => { setCurrentId(nb.id); setViewSchedule(false); setViewSuggest(false); setViewReviewer(false); }}
             >
               <div className="nb-name" title={nb.name}>{nb.name}</div>
-              <div className="nb-meta">{nb.recording_count} rec · {nb.card_count} cards</div>
+              <div className="nb-meta">{nb.recording_count} recordings</div>
               <button className="nb-del" title="Rename" onClick={(e) => renameNotebook(nb, e)}>Rename</button>
               <button className="nb-del nb-del-del" title="Delete notebook" onClick={(e) => deleteNotebook(nb, e)}>×</button>
             </div>
@@ -175,7 +183,6 @@ export default function App() {
             <span className="proc-dot" /> Processing…
             {proc.recordings > 0 && ` ${proc.recordings} recording${proc.recordings > 1 ? "s" : ""}`}
             {proc.total_min > 0 && ` · ${fmtHm(proc.done_min)} of ${fmtHm(proc.total_min)} audio`}
-            {proc.decks > 0 && ` · ${proc.decks} deck${proc.decks > 1 ? "s" : ""}`}
             {proc.tests_waiting > 0 && ` · ${proc.tests_waiting} test${proc.tests_waiting > 1 ? "s" : ""} awaiting scope`}
             <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-muted)" }}>{Math.round((proc.progress || 0) * 100)}%</span>
             <button
@@ -198,13 +205,10 @@ export default function App() {
         </div>
       )}
       {error && <div className="banner error">{error}</div>}
-        {study ? (
-          <StudyView
-            notebookId={study.notebookId}
-            recordingId={study.recordingId}
-            topic={study.topic}
-            title={study.title}
-            onClose={() => setStudy(null)}
+        {viewReviewer ? (
+          <ReviewerView
+            notebooks={notebooks}
+            preselectNotebookId={revNotebookId}
           />
         ) : viewSuggest ? (
           <SuggestView
@@ -219,14 +223,15 @@ export default function App() {
             key={currentId}
             notebookId={currentId}
             notebooks={notebooks}
-            onStudy={(title, recordingId, topic) => setStudy({ title, notebookId: currentId, recordingId, topic })}
+            onOpenReviewer={(nbId) => { setRevNotebookId(nbId); setViewReviewer(true); setViewSuggest(false); setViewSchedule(false); setCurrentId(null); }}
             onEditFocus={(nb) => setModal({ mode: "edit", nb })}
           />
         ) : (
           <HomeView
-            onOpenNotebook={(id) => { setCurrentId(id); setViewSuggest(false); setViewSchedule(false); }}
-            onOpenSuggest={() => { setViewSuggest(true); setViewSchedule(false); setCurrentId(null); }}
-            onOpenSchedule={() => { setViewSchedule(true); setViewSuggest(false); setCurrentId(null); }}
+            onOpenNotebook={(id) => { setCurrentId(id); setViewSuggest(false); setViewSchedule(false); setViewReviewer(false); }}
+            onOpenSuggest={() => { setViewSuggest(true); setViewSchedule(false); setViewReviewer(false); setCurrentId(null); }}
+            onOpenSchedule={() => { setViewSchedule(true); setViewSuggest(false); setViewReviewer(false); setCurrentId(null); }}
+            onOpenReviewer={() => { setViewReviewer(true); setViewSuggest(false); setViewSchedule(false); setCurrentId(null); }}
             onNewNotebook={() => setModal({ mode: "create" })}
           />
         )}

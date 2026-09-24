@@ -167,8 +167,10 @@ def _ollama_chat(messages, schema, num_ctx, num_predict, temperature,
         raise LLMUnavailable(
             f"Local Ollama at {OLLAMA_URL} is not responding — start it "
             "with `ollama serve` (models in project/models/ollama).")
-    return re.sub(r"<think>.*?</think>", "",
-                  r.json()["message"]["content"], flags=re.S).strip()
+    content = r.json().get("message", {}).get("content")
+    if not (content or "").strip():
+        raise LLMUnavailable("empty Ollama response content")
+    return re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
 
 
 def _openrouter_chat(messages, schema, temperature, num_predict,
@@ -236,4 +238,9 @@ def _or_call(model, messages, schema, temperature, num_predict, timeout):
     if r.status_code == 401:
         raise RuntimeError("OpenRouter: invalid API key")
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
+    content = r.json()["choices"][0]["message"]["content"]
+    if not (content or "").strip():
+        # None/empty content from a flaky model must trigger retry/failover,
+        # not an AttributeError that escapes the LLMUnavailable contract
+        raise LLMUnavailable("empty OpenRouter response content")
+    return content.strip()

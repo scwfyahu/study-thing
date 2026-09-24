@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import Outline from "./Outline.jsx";
-import QuizModal from "./QuizModal.jsx";
-import QuizView from "./QuizView.jsx";
 import FocusView from "./FocusView.jsx";
 import TranscriptModal from "./TranscriptModal.jsx";
 import SplitModal from "./SplitModal.jsx";
@@ -15,11 +13,10 @@ export const STATUS_LABEL = {
   splitting: "Splitting",
   transcribing: "Transcribing",
   reading: "Reading notes",
-  extracting: "Making flashcards",
   done: "Done",
   error: "Failed",
 };
-const ACTIVE = new Set(["queued", "denoising", "splitting", "transcribing", "extracting"]);
+const ACTIVE = new Set(["queued", "denoising", "splitting", "transcribing"]);
 
 function fmtDur(s) {
   if (!s) return "";
@@ -27,26 +24,19 @@ function fmtDur(s) {
   return `${Math.floor(m / 60) ? `${Math.floor(m / 60)}h ` : ""}${m % 60}m`;
 }
 
-export default function NotebookView({ notebookId, notebooks, onStudy, onEditFocus }) {
+export default function NotebookView({ notebookId, notebooks, onOpenReviewer, onEditFocus }) {
   const [nb, setNb] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [splitRec, setSplitRec] = useState(null); // recording proposed for auto-split
   const [busy, setBusy] = useState(false);
   const [reviewers, setReviewers] = useState([]);
-  const [revBusy, setRevBusy] = useState(false);
-  const [revTopic, setRevTopic] = useState("__all__");
   const [openRev, setOpenRev] = useState(null); // reviewer id expanded
   const [revContent, setRevContent] = useState(null);
   const [tests, setTests] = useState([]);
   const [scanning, setScanning] = useState(false);
-  const [quizzes, setQuizzes] = useState([]);
-  const [quizModal, setQuizModal] = useState(false);
-  const [activeQuiz, setActiveQuiz] = useState(null); // {id, title}
   const [autoFocusing, setAutoFocusing] = useState(false);
   const [srcTab, setSrcTab] = useState("recordings");
   const [selTopic, setSelTopic] = useState(null);
-  const [decks, setDecks] = useState([]);
-  const [scopeModal, setScopeModal] = useState(null); // deck being confirmed
   const [focus, setFocus] = useState([]);
   const [generatingFocus, setGeneratingFocus] = useState(false);
   const [transcriptModal, setTranscriptModal] = useState(null); // {title, data}
@@ -65,14 +55,12 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
 
   const load = useCallback(async () => {
     try {
-      const [n, rvs, ts, qzs, dks, fc] = await Promise.all([
-        api.notebook(notebookId), api.reviewers(notebookId), api.tests(notebookId), api.quizzes(notebookId), api.decks(notebookId), api.focus(notebookId),
+      const [n, rvs, ts, fc] = await Promise.all([
+        api.notebook(notebookId), api.reviewers(), api.tests(notebookId), api.focus(notebookId),
       ]);
       setNb(n);
-      setReviewers(rvs);
+      setReviewers(rvs.filter((x) => x.notebook_id === notebookId));
       setTests(ts);
-      setQuizzes(qzs);
-      setDecks(dks);
       setFocus(fc.focus || []);
     } catch {
       /* transient */
@@ -104,23 +92,8 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
     load();
   };
 
-  const startStudy = async () => {
-    const q = await api.study(notebookId);
-    if (!q.cards.length) return alert("Nothing due — all cards scheduled. Study again when the queue fills up.");
-    onStudy(nb.name);
-  };
-
   const editTopics = () => {
     onEditFocus(nb);
-  };
-
-  const newDeck = async () => {
-    // fully automatic: guess scope from notebook topics, generate immediately
-    const dk = await api.createDeck(notebookId, { title: "Full syllabus" });
-    const { scope } = await api.guessDeckScope(dk.id);
-    await api.updateDeck(dk.id, { scope });
-    await api.confirmDeck(dk.id);
-    load();
   };
 
   const autoFocus = async () => {
@@ -143,24 +116,6 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
       setGeneratingFocus(false);
     }
     setAutoFocusing(false);
-  };
-
-  const topicOptions = (nb?.topics || "")
-    .split("\n")
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  const genReviewer = async () => {
-    setRevBusy(true);
-    try {
-      const created = await api.createReviewer(notebookId, revTopic);
-      await load();
-      setOpenRev(created.id);
-      setRevContent(created.content);
-    } catch (ex) {
-      alert(ex.message);
-    }
-    setRevBusy(false);
   };
 
   const toggleRev = async (id) => {
@@ -200,29 +155,6 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
     load();
   };
 
-  const makeQuiz = async (source, difficulty, num) => {
-    const q = await api.createQuiz(notebookId, { source: label(source), scope: scopeList(source), difficulty, num_questions: num });
-    await load();
-    setActiveQuiz({ id: q.id, title: q.title });
-  };
-
-  const label = (src) => {
-    if (src === "__all__") return "All cards";
-    if (src.startsWith("topic:")) return src.slice(6);
-    return tests.find((x) => `test:${x.id}` === src)?.title || src;
-  };
-  const scopeList = (src) => {
-    if (src === "__all__") return [];
-    if (src.startsWith("topic:")) return [src.slice(6)];
-    return tests.find((x) => `test:${x.id}` === src)?.scope || [];
-  };
-
-  const delQuiz = async (id) => {
-    if (!(await askConfirm("Delete this quiz?"))) return;
-    await api.deleteQuiz(id);
-    load();
-  };
-
   const recRows = (nb?.recordings || []).filter((r) => r.kind !== "notes");
   const noteRows = (nb?.recordings || []).filter((r) => r.kind === "notes");
   useEffect(() => {
@@ -248,11 +180,9 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
             </button>
           )}
           <button className="btn" onClick={() => editTopics()} title="Edit the focus topic list and syllabus">✎ Edit focus</button>
-          <button className="primary" onClick={startStudy}>
-            ▶ Study{(nb.due_count || nb.new_count) ? ` (${nb.due_count} due · ${nb.new_count} new)` : ""}
+          <button className="primary" onClick={() => onOpenReviewer && onOpenReviewer(nb.id)}>
+            ▶ Make reviewer
           </button>
-          <a className="btn" href={`/api/notebooks/${nb.id}/export?format=apkg`}>Export Anki</a>
-          <a className="btn" href={`/api/notebooks/${nb.id}/export?format=csv`}>Export CSV</a>
         </div>
       </header>
 
@@ -324,204 +254,55 @@ export default function NotebookView({ notebookId, notebooks, onStudy, onEditFoc
           </p>
         )}
         {srcRows.map((r) => (
-          <RecordingRow key={r.id} r={r} onChanged={load} onStudy={onStudy} nbName={nb.name} nbId={nb.id} notebooks={notebooks} onTranscript={openRecTranscript} onSplit={(rec) => setSplitRec(rec)} />
+          <RecordingRow key={r.id} r={r} onChanged={load} nbName={nb.name} nbId={nb.id} notebooks={notebooks} onTranscript={openRecTranscript} onSplit={(rec) => setSplitRec(rec)} />
         ))}
       </section>
-      </section>
-
-      <section className="rev-section">
-        <div className="rev-bar">
-          <h4>Flashcard decks</h4>
-          <button className="btn small" onClick={newDeck}>＋ Auto-generate deck</button>
-        </div>
-        {decks.length === 0 && <p className="muted small-note">No decks yet. Decks generate automatically when a test is detected in your recordings — or click the button to build one from the full syllabus.</p>}
-        {decks.map((dk) => (
-          <DeckRow key={dk.id} dk={dk} onChanged={load} onStudy={onStudy} nbName={nb.name} notebookId={notebookId} onConfirmScope={(d) => setScopeModal(d)} />
-        ))}
       </section>
 
       <section className="rev-section">
         <div className="rev-bar">
           <h4>Reviewers</h4>
-          <select value={revTopic} onChange={(e) => setRevTopic(e.target.value)} disabled={revBusy}>
-            <option value="__all__">All topics</option>
-            {topicOptions.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-          <button className="btn primary" onClick={genReviewer} disabled={revBusy}>
-            {revBusy ? "Writing…" : "＋ Generate reviewer"}
-          </button>
+          <button className="btn primary" onClick={() => onOpenReviewer && onOpenReviewer(nb.id)}>＋ New reviewer</button>
         </div>
-        {reviewers.length === 0 && <p className="muted small-note">No reviewers yet — generate a study guide from a topic's flashcards.</p>}
+        {reviewers.length === 0 && <p className="muted small-note">No reviewers yet — pick recordings by date/topic in the Reviewer tab and generate a study guide from their transcripts.</p>}
         {reviewers.map((rv) => (
           <div key={rv.id} className="rev-row">
             <button className="rev-main" onClick={() => toggleRev(rv.id)}>
               <span className="rev-topic">{rv.topic}</span>
-              <span className="muted">{rv.created_at.slice(0, 16).replace("T", " ")} · {Math.round(rv.chars / 100) / 10}k chars</span>
+              <span className={`badge s-${rv.status === "ready" ? "done" : rv.status === "error" ? "error" : rv.status}`}>{rv.status}</span>
+              <span className="muted">{rv.created_at.slice(0, 16).replace("T", " ")}{rv.chars ? ` · ${Math.round(rv.chars / 100) / 10}k chars` : ""}</span>
             </button>
             <a className="btn small" href={`/api/reviewers/${rv.id}/download?format=md`}>.md</a>
             <a className="btn small" href={`/api/reviewers/${rv.id}/download?format=txt`}>.txt</a>
             <button className="icon-del" onClick={() => delRev(rv.id)} title="Delete reviewer">✕</button>
-            {openRev === rv.id && (
+            {openRev === rv.id && rv.status === "error" && (
+              <div className="rev-body"><p className="err-text">{rv.error || "generation failed"}</p></div>
+            )}
+            {openRev === rv.id && rv.status !== "error" && (
               <div className="rev-body">
-                <Outline content={revContent} />
+                {revContent ? <Outline content={revContent} /> : <p className="muted">Loading…</p>}
               </div>
             )}
           </div>
         ))}
       </section>
 
-      <section className="rev-section quizzes-section">
-        <div className="rev-bar">
-          <h4>Quizzes</h4>
-          <button className="btn primary" onClick={() => setQuizModal(true)}>＋ New quiz</button>
-        </div>
-        {quizzes.length === 0 && <p className="muted small-note">Practice tests built from your flashcards — scope them to a test from the schedule, difficulty 1-10.</p>}
-        {quizzes.map((qz) => (
-          <div key={qz.id} className="quiz-row">
-            <button className="rev-main" onClick={() => setActiveQuiz({ id: qz.id, title: qz.title })}>
-              <span className="rev-topic">{qz.title}</span>
-              <span className="muted">{qz.created_at.slice(0, 16).replace("T", " ")}</span>
-            </button>
-            <button className="icon-del" onClick={() => delQuiz(qz.id)} title="Delete quiz">✕</button>
-          </div>
-        ))}
-      </section>
-
-      {scopeModal && <ScopeModal deck={scopeModal} onClose={() => setScopeModal(null)} />}
       {transcriptModal && <TranscriptModal title={transcriptModal.title} data={transcriptModal.data} onClose={() => setTranscriptModal(null)} />}
       {splitRec && (
         <SplitModal rec={splitRec} notebooks={notebooks}
           onClose={() => setSplitRec(null)}
           onDone={() => { setSplitRec(null); load(); }} />
       )}
-      {quizModal && (
-        <QuizModal
-          tests={tests}
-          topicOptions={topicOptions}
-          onSave={makeQuiz}
-          onClose={() => setQuizModal(false)}
-        />
-      )}
-      {activeQuiz && (
-        <QuizView quizId={activeQuiz.id} title={activeQuiz.title} onClose={() => setActiveQuiz(null)} />
-      )}
     </div>
   );
 }
 
-function ScopeModal({ deck, onSave, onClose }) {
-  const [scopeText, setScopeText] = useState((deck.scope || []).join("\n"));
-  const [guessing, setGuessing] = useState(false);
-
-  const guess = async () => {
-    setGuessing(true);
-    try {
-      const r = await api.guessDeckScope(deck.id);
-      setScopeText(r.scope.join("\n"));
-    } catch (e) {
-      alert(e.message);
-    }
-    setGuessing(false);
-  };
-
-  const save = async () => {
-    const scope = scopeText.split("\n").map((s) => s.trim()).filter(Boolean);
-    await api.updateDeck(deck.id, { scope });
-    await api.confirmDeck(deck.id);
-    onClose();
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Confirm scope — {deck.title}</h3>
-        <label>Scope <span className="muted">(flashcards will only cover these)</span></label>
-        <textarea rows={7} value={scopeText} onChange={(e) => setScopeText(e.target.value)}
-                  placeholder={"One scope topic per line.\nThe guess below is auto-generated from the test announcement + syllabus — edit freely."} />
-        <div className="modal-actions">
-          <button className="btn" onClick={guess} disabled={guessing}>{guessing ? "Guessing…" : "⟳ Auto-guess scope"}</button>
-          <span className="spacer" />
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={save}>Confirm → generate flashcards</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DeckRow({ dk, onChanged, onStudy, nbName, notebookId, onConfirmScope }) {
-  const [browse, setBrowse] = useState(null); // cards of this deck
-  const active = dk.status === "generating";
-
-  const studyThis = async () => {
-    const q = await api.study(notebookId, null, null, dk.id);
-    if (!q.cards.length) return alert("Nothing due in this deck yet.");
-    onStudy(dk.title, null, null, dk.id);
-  };
-
-  const del = async () => {
-    if (!(await askConfirm(`Delete deck "${dk.title}" and its ${dk.card_count} flashcards?`))) return;
-    await api.deleteDeck(dk.id);
-    onChanged();
-  };
-
-  const toggle = async () => {
-    if (browse === null) {
-      const c = await api.cards(notebookId, null, dk.id);
-      setBrowse(c.cards);
-    } else setBrowse(null);
-  };
-
-  return (
-    <div className="rec-row deck-row">
-      <div className="rec-top">
-        <button className="rec-toggle" onClick={toggle}>{browse !== null ? "▾" : "▸"}</button>
-        <span className="rec-name">{dk.title}</span>
-        <span className={`badge s-${dk.status === "ready" ? "done" : dk.status === "error" ? "error" : dk.status}`}>{dk.status}</span>
-        <span className="muted">{dk.card_count} cards</span>
-        <span className="spacer" />
-        {(dk.status === "draft" || dk.status === "ready" || dk.status === "error") && (
-          <button className="btn small primary" onClick={() => onConfirmScope(dk)}>
-            {dk.status === "draft" ? "Confirm scope" : "Edit scope"}
-          </button>
-        )}
-        {dk.status === "ready" && (
-          <>
-            <button className="btn small" onClick={studyThis}>▶ Study</button>
-            <a className="btn small" href={`/api/decks/${dk.id}/export?format=apkg`}>Anki</a>
-            <a className="btn small" href={`/api/decks/${dk.id}/export?format=csv`}>CSV</a>
-          </>
-        )}
-        {active && <span className="muted small-note">generating…</span>}
-        <button className="icon-del" onClick={del} title="Delete deck">✕</button>
-      </div>
-      {dk.scope && dk.scope.length > 0 && (
-        <div className="muted small-note" style={{ marginTop: 6 }}>Scope: {dk.scope.join(" · ")}</div>
-      )}
-      {browse !== null && (
-        <div className="cards" style={{ marginTop: 10 }}>
-          {browse.length === 0 && <p className="muted">No cards.</p>}
-          {browse.map((c) => (
-            <details key={c.id} className="card">
-              <summary>{c.question}</summary>
-              <p>{c.answer}</p>
-              {c.topic && <div className="muted small-note">{c.topic}</div>}
-            </details>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTranscript, onSplit }) {
+function RecordingRow({ r, onChanged, nbName, nbId, notebooks, onTranscript, onSplit }) {
   const active = ACTIVE.has(r.status);
   const [listen, setListen] = useState(false);
 
   const del = async () => {
-    if (!(await askConfirm(`Delete "${r.original_name}" and its flashcards?`))) return;
+    if (!(await askConfirm(`Delete "${r.original_name}" and its transcript?`))) return;
     await api.deleteRecording(r.id);
     onChanged();
   };
@@ -533,7 +314,7 @@ function RecordingRow({ r, onChanged, onStudy, nbName, nbId, notebooks, onTransc
   };
 
   const reprocess = async () => {
-    if (!(await askConfirm("Re-run transcription + flashcard generation for this recording? (existing cards are rebuilt)"))) return;
+    if (!(await askConfirm("Re-run transcription for this recording? (chunks are rebuilt)"))) return;
     await api.reprocess(r.id);
     onChanged();
   };

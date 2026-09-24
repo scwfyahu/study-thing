@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import db, deckgen, exams, mediaclean, notes, pipeline, quizzes, reviewers, srs, selfupdate, setupwizard as setupw, syllabus
+from . import db, deckgen, exams, mediaclean, notes, pipeline, reviewers, selfupdate, setupwizard as setupw, syllabus
 
 logger = logging.getLogger("studything.api")
 from .tunnel import router as tunnel_router
@@ -29,7 +29,6 @@ from .config import (
     WHISPERCPP_MODEL,
     WHISPER_MODEL,
 )
-from .exporters import cards_to_apkg, cards_to_csv
 
 ALLOWED_EXT = {
     ".m4a", ".mp3", ".wav", ".webm", ".mp4", ".aac", ".ogg", ".oga",
@@ -66,9 +65,6 @@ def home_dashboard():
     with db.get_conn() as conn:
         nb_count = conn.execute("SELECT COUNT(*) n FROM notebooks").fetchone()["n"]
         rec_total = conn.execute("SELECT COUNT(*) n FROM recordings").fetchone()["n"]
-        card_total = conn.execute("SELECT COUNT(*) n FROM cards").fetchone()["n"]
-        deck_total = conn.execute("SELECT COUNT(*) n FROM decks").fetchone()["n"]
-        quiz_total = conn.execute("SELECT COUNT(*) n FROM quizzes").fetchone()["n"]
         inbox = conn.execute(
             "SELECT COUNT(*) n FROM recordings WHERE notebook_id IS NULL "
             "AND status='unclassified'").fetchone()["n"]
@@ -90,8 +86,7 @@ def home_dashboard():
             (today,)).fetchall()
     return {
         "totals": {"notebooks": nb_count, "recordings": rec_total,
-                   "cards": card_total, "decks": deck_total,
-                   "quizzes": quiz_total, "inbox": inbox, "active": active},
+                   "inbox": inbox, "active": active},
         "recent": [dict(r) for r in recent],
         "tests": [dict(t) for t in tests],
     }
@@ -105,9 +100,6 @@ def processing_status():
             " ('queued','denoising','splitting','transcribing','reading','classifying')"
         ).fetchall()
         rec = len(rows)
-        decks = conn.execute(
-            "SELECT COUNT(*) AS n FROM decks WHERE status='generating'"
-        ).fetchone()["n"]
         waiting = conn.execute(
             "SELECT COUNT(*) AS n FROM tests WHERE confirmed=0"
         ).fetchone()["n"]
@@ -115,8 +107,8 @@ def processing_status():
     total_sec = sum((r["duration_sec"] or 0) for r in rows)
     done_sec = sum((r["duration_sec"] or 0) * (r["progress"] or 0) for r in rows)
     avg = round(done_sec / total_sec, 3) if total_sec else 0.0
-    return {"recordings": rec, "decks": decks, "tests_waiting": waiting,
-            "progress": avg, "busy": (rec + decks) > 0,
+    return {"recordings": rec, "tests_waiting": waiting,
+            "progress": avg, "busy": rec > 0,
             "total_min": round(total_sec / 60), "done_min": round(done_sec / 60)}
 
 
@@ -152,8 +144,7 @@ def list_notebooks():
     with db.get_conn() as conn:
         rows = conn.execute(
             """SELECT n.id, n.name, n.created_at,
-                 (SELECT COUNT(*) FROM recordings r WHERE r.notebook_id = n.id) AS recording_count,
-                 (SELECT COUNT(*) FROM cards c WHERE c.notebook_id = n.id) AS card_count
+                 (SELECT COUNT(*) FROM recordings r WHERE r.notebook_id = n.id) AS recording_count
                FROM notebooks n ORDER BY n.created_at DESC, n.id DESC"""
         ).fetchall()
     return [dict(r) for r in rows]
@@ -252,14 +243,6 @@ def get_notebook(nb_id: int):
                FROM recordings WHERE notebook_id=? ORDER BY COALESCE(recorded_at, created_at) DESC, id DESC""",
             (nb_id,),
         ).fetchall()
-        stats = conn.execute(
-            """SELECT
-                 SUM(CASE WHEN c.reps=0 THEN 1 ELSE 0 END) AS new_count,
-                 SUM(CASE WHEN c.reps>0 AND c.due_date <= date('now') THEN 1 ELSE 0 END) AS due_count
-               FROM cards c
-               WHERE c.notebook_id=?""",
-            (nb_id,),
-        ).fetchone()
     out_recs = []
     active_ids = sorted(r["id"] for r in recs if r["status"] in ("queued", "denoising", "splitting", "transcribing", "reading", "extracting"))
     for r in recs:
@@ -267,62 +250,7 @@ def get_notebook(nb_id: int):
         if r["status"] == "queued":
             d["queue_pos"] = active_ids.index(r["id"]) + 1
         out_recs.append(d)
-    return {**dict(nb), "recordings": out_recs,
-            "new_count": stats["new_count"] or 0, "due_count": stats["due_count"] or 0,
-            "has_syllabus": has_syllabus}
-
-
-@app.get("/api/notebooks/{nb_id}/study")
-def study_queue(nb_id: int, recording_id: int | None = None, topic: str | None = None, deck_id: int | None = None):
-    with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
-        where = "c.notebook_id=?"
-        args: list = [nb_id]
-        if recording_id:
-            where += " AND c.recording_id=?"
-            args.append(recording_id)
-        if topic:
-            where += " AND COALESCE(NULLIF(c.topic, ''), 'Untagged')=?"
-            args.append(topic)
-        if deck_id:
-            where += " AND c.deck_id=?"
-            args.append(deck_id)
-        rows = conn.execute(
-            f"""SELECT c.id, c.question, c.answer, c.topic, c.reps, c.interval_days, c.due_date
-               FROM cards c
-               WHERE {where} AND (c.reps=0 OR c.due_date <= date('now'))
-               ORDER BY (c.reps=0) DESC, c.due_date, c.id""",
-            args,
-        ).fetchall()
-    cards = [dict(r) for r in rows]
-    return {
-        "cards": cards,
-        "new_count": sum(1 for c in cards if c["reps"] == 0),
-        "due_count": sum(1 for c in cards if c["reps"] > 0),
-    }
-
-
-@app.post("/api/ratings")
-def rate_card(body: dict):
-    import datetime as _dt
-
-    card_id = body.get("card_id")
-    rating = body.get("rating")
-    if rating not in ("again", "hard", "good", "easy"):
-        raise HTTPException(422, "rating must be again|hard|good|easy")
-    with db.get_conn() as conn:
-        row = conn.execute(
-            "SELECT id, ease, interval_days, reps, lapses, due_date FROM cards WHERE id=?", (card_id,)
-        ).fetchone()
-        if row is None:
-            raise HTTPException(404, "card not found")
-        upd = srs.apply_rating(dict(row), rating, _dt.date.today())
-        conn.execute(
-            """UPDATE cards SET ease=?, interval_days=?, reps=?, lapses=?, due_date=?
-               WHERE id=?""",
-            (upd["ease"], upd["interval_days"], upd["reps"], upd["lapses"], upd["due_date"], card_id),
-        )
-    return {"ok": True, **upd}
+    return {**dict(nb), "recordings": out_recs, "has_syllabus": has_syllabus}
 
 
 @app.delete("/api/notebooks/{nb_id}")
@@ -340,46 +268,12 @@ def delete_notebook(nb_id: int):
     return {"ok": True}
 
 
-@app.get("/api/notebooks/{nb_id}/cards")
-def notebook_cards(nb_id: int, topic: str | None = None, deck_id: int | None = None):
-    with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
-        counts = conn.execute(
-            """SELECT COALESCE(NULLIF(c.topic, ''), 'Untagged') AS t, COUNT(*) AS n
-               FROM cards c
-               WHERE c.notebook_id=? GROUP BY t ORDER BY n DESC""",
-            (nb_id,),
-        ).fetchall()
-        where = "c.notebook_id=?"
-        args = [nb_id]
-        if topic:
-            where += " AND COALESCE(NULLIF(c.topic, ''), 'Untagged')=?"
-            args.append(topic)
-        if deck_id:
-            where += " AND c.deck_id=?"
-            args.append(deck_id)
-        rows = conn.execute(
-            f"""SELECT c.id, c.question, c.answer, c.topic, c.recording_id
-               FROM cards c
-               WHERE {where} ORDER BY c.recording_id, c.position""",
-            args,
-        ).fetchall()
-    return {"topics": [dict(x) for x in counts], "cards": [dict(x) for x in rows]}
-
-
 @app.get("/api/schedule")
 def schedule_all():
     with db.get_conn() as conn:
         rows = conn.execute(
             """SELECT t.id, t.title, t.date_text, t.date_iso, t.scope, t.confirmed,
                       n.name AS notebook_name, n.id AS notebook_id,
-                      (SELECT d.id FROM decks d WHERE d.quiz_id = t.id
-                        ORDER BY d.id DESC LIMIT 1) AS deck_id,
-                      (SELECT d.status FROM decks d WHERE d.quiz_id = t.id
-                        ORDER BY d.id DESC LIMIT 1) AS deck_status,
-                      (SELECT COUNT(*) FROM cards c WHERE c.deck_id IN
-                        (SELECT d2.id FROM decks d2 WHERE d2.quiz_id = t.id))
-                       AS deck_cards
                FROM tests t JOIN notebooks n ON n.id = t.notebook_id
                WHERE t.date_iso IS NOT NULL
                ORDER BY t.date_iso ASC, t.created_at DESC""",
@@ -498,7 +392,6 @@ def reprocess_recording(rec_id: int, background_tasks: BackgroundTasks):
         row = conn.execute("SELECT stored_path FROM recordings WHERE id=?", (rec_id,)).fetchone()
         if row is None:
             raise HTTPException(404, "recording not found")
-        conn.execute("DELETE FROM cards WHERE recording_id=?", (rec_id,))
         conn.execute("DELETE FROM chunks WHERE recording_id=?", (rec_id,))
         conn.execute(
             "UPDATE recordings SET status='queued', progress=0, note=NULL, error=NULL "
@@ -638,18 +531,6 @@ def assign_recording(rec_id: int, body: dict, background_tasks: BackgroundTasks)
     return {"id": rec_id, "notebook_id": int(target), "status": "assigned"}
 
 
-@app.get("/api/recordings/{rec_id}/cards")
-def recording_cards(rec_id: int):
-    with db.get_conn() as conn:
-        if conn.execute("SELECT 1 FROM recordings WHERE id=?", (rec_id,)).fetchone() is None:
-            raise HTTPException(404, "recording not found")
-        rows = conn.execute(
-            "SELECT id, question, answer, position FROM cards WHERE recording_id=? ORDER BY position",
-            (rec_id,),
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
 @app.get("/api/recordings/{rec_id}/file")
 def recording_file(rec_id: int, dl: int = 0):
     """Serve the original upload (inline for view, attachment when dl=1)."""
@@ -709,32 +590,6 @@ def notebook_transcript(nb_id: int, q: str | None = None):
 
 
 # ------------------------------------------------------------------ exports
-
-def _fetch_cards_for(conn, where: str, args: tuple):
-    return conn.execute(
-        f"""SELECT c.question, c.answer FROM cards c
-            WHERE {where} ORDER BY c.recording_id, c.position""",
-        args,
-    ).fetchall()
-
-
-def _export(cards, fmt: str, deck_name: str, tags: list[str]):
-    if not cards:
-        raise HTTPException(400, "no flashcards yet for this item")
-    if fmt == "csv":
-        return PlainTextResponse(
-            cards_to_csv(cards),
-            media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{_slug(deck_name)}.csv"'},
-        )
-    path = cards_to_apkg(cards, deck_name, tags)
-    return FileResponse(
-        path,
-        media_type="application/octet-stream",
-        filename=f"{_slug(deck_name)}.apkg",
-        background=BackgroundTask(lambda: shutil.rmtree(path.parent, ignore_errors=True)),
-    )
-
 
 def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s)[:100] or "deck"
@@ -863,29 +718,6 @@ def get_audio(rec_id: int, request: Request):
     return FileResponse(p, media_type=mime, headers={"Accept-Ranges": "bytes"})
 
 
-@app.get("/api/recordings/{rec_id}/export")
-def export_recording(rec_id: int, format: str = "apkg"):
-    with db.get_conn() as conn:
-        rec = conn.execute(
-            "SELECT r.original_name, r.notebook_id, n.name AS notebook_name "
-            "FROM recordings r JOIN notebooks n ON n.id=r.notebook_id WHERE r.id=?",
-            (rec_id,),
-        ).fetchone()
-        if rec is None:
-            raise HTTPException(404, "recording not found")
-        cards = _fetch_cards_for(conn, "r.id=?", (rec_id,))
-    deck = f"{rec['notebook_name']} :: {rec['original_name']}"
-    return _export(cards, format, deck, [rec["notebook_name"]])
-
-
-@app.get("/api/notebooks/{nb_id}/export")
-def export_notebook(nb_id: int, format: str = "apkg"):
-    with db.get_conn() as conn:
-        nb = _nb_or_404(conn, nb_id)
-        cards = _fetch_cards_for(conn, "r.notebook_id=?", (nb_id,))
-    return _export(cards, format, nb["name"], [nb["name"]])
-
-
 @app.get("/api/notebooks/{nb_id}/tests")
 def list_tests(nb_id: int):
     with db.get_conn() as conn:
@@ -941,38 +773,7 @@ def scan_tests(nb_id: int, background_tasks: BackgroundTasks):
         new_ids = [r["id"] for r in conn.execute(
             "SELECT id FROM tests WHERE notebook_id=?", (nb_id,)).fetchall()
             if r["confirmed"] == 1]
-    if new_ids:
-        background_tasks.add_task(deckgen.auto_decks_for_tests,
-                                  nb_id, new_ids)
     return {"ok": True, "scanned": n}
-
-
-@app.post("/api/tests/{tid}/deck")
-def test_deck(tid: int, background_tasks: BackgroundTasks):
-    """Create + generate a deck for one scheduled test (idempotent)."""
-    import json as _json
-    with db.get_conn() as conn:
-        t = conn.execute("SELECT * FROM tests WHERE id=?", (tid,)).fetchone()
-        if t is None:
-            raise HTTPException(404, "test not found")
-        if not t["confirmed"]:
-            raise HTTPException(409,
-                "test scope is not confirmed — confirm it first")
-        existing = conn.execute(
-            "SELECT id FROM decks WHERE quiz_id=? ORDER BY id DESC LIMIT 1",
-            (tid,)).fetchone()
-        if existing:
-            did = existing["id"]
-        else:
-            cur = conn.execute(
-                "INSERT INTO decks(notebook_id, quiz_id, title, scope, status)"
-                " VALUES (?,?,?,?,'generating')",
-                (t["notebook_id"], tid, t["title"], _json.dumps([])))
-            conn.commit()
-            did = cur.lastrowid
-    background_tasks.add_task(deckgen.auto_decks_for_tests,
-                              t["notebook_id"], [tid])
-    return {"deck_id": did, "status": "generating"}
 
 
 @app.post("/api/tests/{tid}/guess")
@@ -1065,9 +866,6 @@ def confirm_test(tid: int, body: dict, background_tasks: BackgroundTasks):
         else:
             conn.execute("UPDATE tests SET confirmed=1 WHERE id=?", (tid,))
         conn.commit()
-    # scope confirmed -> generate deck for this test now
-    background_tasks.add_task(deckgen.auto_decks_for_tests,
-                              t["notebook_id"], [tid])
     return {"ok": True}
 
 
@@ -1135,45 +933,130 @@ def auto_focus(nb_id: int, background_tasks: BackgroundTasks):
     return {"ok": True, "generating": True}
 
 
-@app.get("/api/notebooks/{nb_id}/reviewers")
-def list_reviewers(nb_id: int):
+@app.get("/api/reviewers/pick")
+def reviewer_pick(notebook_id: int | None = None, date_from: str | None = None,
+                  date_to: str | None = None, topic: str | None = None,
+                  q: str | None = None):
+    """Eligible recordings for a reviewer pick: transcribed only, filterable by
+    class, date range, and topic/free text (matched against chunk text)."""
+    where = ["r.status='done'",
+             "(SELECT COUNT(*) FROM chunks c WHERE c.recording_id = r.id) > 0"]
+    args: list = []
+    if notebook_id:
+        where.append("r.notebook_id = ?")
+        args.append(notebook_id)
+    if date_from:
+        where.append("substr(COALESCE(r.recorded_at, r.created_at), 1, 10) >= ?")
+        args.append(date_from)
+    if date_to:
+        where.append("substr(COALESCE(r.recorded_at, r.created_at), 1, 10) <= ?")
+        args.append(date_to)
+    term = (topic or "").strip() or (q or "").strip()
+    if term:
+        where.append(
+            "EXISTS (SELECT 1 FROM chunks c2 WHERE c2.recording_id = r.id"
+            " AND c2.text LIKE ?)")
+        args.append(f"%{term}%")
     with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
         rows = conn.execute(
-            "SELECT id, topic, created_at, length(content) AS chars FROM reviewers WHERE notebook_id=? ORDER BY id DESC",
-            (nb_id,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+            "SELECT r.id, r.original_name, r.kind, r.duration_sec, r.notebook_id,"
+            " COALESCE(r.recorded_at, r.created_at) AS when_txt, n.name AS nb_name,"
+            " (SELECT COUNT(*) FROM chunks c3 WHERE c3.recording_id = r.id) AS chunk_count"
+            " FROM recordings r LEFT JOIN notebooks n ON n.id = r.notebook_id"
+            " WHERE " + " AND ".join(where)
+            + " ORDER BY COALESCE(r.recorded_at, r.created_at) DESC",
+            tuple(args)).fetchall()
+        topics = [x["name"] for x in conn.execute(
+            "SELECT DISTINCT name FROM focus_topics"
+            + (" WHERE notebook_id=?" if notebook_id else "")
+            + " ORDER BY name",
+            ((notebook_id,) if notebook_id else ())).fetchall()]
+    return {"recordings": [dict(r) for r in rows], "topics": topics}
 
 
-@app.post("/api/notebooks/{nb_id}/reviewers", status_code=201)
-def create_reviewer(nb_id: int, body: dict, background_tasks: BackgroundTasks):
-    with db.get_conn() as conn:
-        nb = _nb_or_404(conn, nb_id)
-        nb = conn.execute("SELECT id, name, topics FROM notebooks WHERE id=?", (nb_id,)).fetchone()
-    topic = (body.get("topic") or "__all__").strip() or "__all__"
+@app.post("/api/reviewers/generate", status_code=201)
+def create_reviewer(body: dict, background_tasks: BackgroundTasks):
+    """Queue reviewer generation from selected recordings. Async — poll status."""
     try:
-        content = reviewers.generate_reviewer(nb_id, nb["name"], nb["topics"], topic)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+        ids = sorted({int(x) for x in (body.get("recording_ids") or [])})
+    except (TypeError, ValueError):
+        raise HTTPException(422, "recording_ids must be integers")
+    if not ids:
+        raise HTTPException(400, "pick at least one recording")
+    title = (str(body.get("title") or "").strip()
+             or f"Reviewer {__import__('datetime').date.today().isoformat()}")
     with db.get_conn() as conn:
+        nbs = [r["notebook_id"] for r in conn.execute(
+            "SELECT notebook_id FROM recordings WHERE id IN ("
+            + ",".join("?" for _ in ids) + ")", tuple(ids)).fetchall()
+            if r["notebook_id"]]
+        if not nbs:
+            raise HTTPException(400,
+                "selected recordings are unassigned — classify them first (Suggest)")
+        notebook_id = max(set(nbs), key=nbs.count)
         cur = conn.execute(
-            "INSERT INTO reviewers(notebook_id, topic, content) VALUES (?,?,?)",
-            (nb_id, topic if topic != "__all__" else "All topics", content),
-        )
+            "INSERT INTO reviewers(notebook_id, topic, content, status, source_ids)"
+            " VALUES (?,?,'','generating',?)",
+            (notebook_id, title, json.dumps(ids)))
         rid = cur.lastrowid
-    return {"id": rid, "topic": topic, "content": content}
+    background_tasks.add_task(_reviewer_task, rid, ids, title)
+    return {"id": rid, "status": "generating"}
+
+
+def _reviewer_task(rid: int, recording_ids: list[int], title: str) -> None:
+    def stage(name: str) -> None:
+        with db.get_conn() as conn:
+            conn.execute("UPDATE reviewers SET status=? WHERE id=?", (name, rid))
+            conn.commit()
+    try:
+        res = reviewers.generate(recording_ids, title, on_stage=stage)
+        with db.get_conn() as conn:
+            conn.execute(
+                "UPDATE reviewers SET content=?, status='ready' WHERE id=?",
+                (res["content"], rid))
+            conn.commit()
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger("studything.reviewers").warning(
+            "reviewer %s failed: %s", rid, e)
+        with db.get_conn() as conn:
+            conn.execute("UPDATE reviewers SET status='error', error=? WHERE id=?",
+                         (str(e)[:500], rid))
+            conn.commit()
+
+
+@app.get("/api/reviewers")
+def list_reviewers():
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, notebook_id, topic, status, error, created_at,"
+            " length(content) AS chars, source_ids FROM reviewers ORDER BY id DESC",
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["source_ids"] = json.loads(d["source_ids"] or "[]")
+        except Exception:
+            d["source_ids"] = []
+        out.append(d)
+    return out
 
 
 @app.get("/api/reviewers/{rid}")
 def get_reviewer(rid: int):
     with db.get_conn() as conn:
         row = conn.execute(
-            "SELECT id, notebook_id, topic, content, created_at FROM reviewers WHERE id=?", (rid,)
+            "SELECT id, notebook_id, topic, content, status, error, created_at,"
+            " source_ids FROM reviewers WHERE id=?", (rid,)
         ).fetchone()
     if row is None:
         raise HTTPException(404, "reviewer not found")
-    return dict(row)
+    d = dict(row)
+    try:
+        d["source_ids"] = json.loads(d["source_ids"] or "[]")
+    except Exception:
+        d["source_ids"] = []
+    return d
 
 
 @app.delete("/api/reviewers/{rid}")
@@ -1198,193 +1081,6 @@ def download_reviewer(rid: int, format: str = "md"):
         headers={"Content-Disposition": f'attachment; filename="reviewer-{_slug(row["topic"])}.{ext}"'},
     )
 
-
-# ------------------------------------------------------------------ decks
-
-@app.get("/api/notebooks/{nb_id}/decks")
-def list_decks(nb_id: int):
-    with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
-        rows = conn.execute(
-            """SELECT d.id, d.title, d.scope, d.status, d.error, d.progress, d.created_at, d.quiz_id,
-                      (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) AS card_count
-               FROM decks d WHERE d.notebook_id=? ORDER BY d.id DESC""",
-            (nb_id,),
-        ).fetchall()
-    out = []
-    for r in rows:
-        d = dict(r)
-        try:
-            d["scope"] = json.loads(d["scope"] or "[]")
-        except Exception:
-            d["scope"] = []
-        out.append(d)
-    return out
-
-
-@app.post("/api/notebooks/{nb_id}/decks", status_code=201)
-def create_deck(nb_id: int, body: dict):
-    with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
-    title = (body.get("title") or "Untitled deck").strip()
-    scope = [str(s) for s in (body.get("scope") or [])]
-    quiz_id = body.get("quiz_id")
-    with db.get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO decks(notebook_id, quiz_id, title, scope, status) VALUES (?,?,?,?,'draft')",
-            (nb_id, quiz_id, title, json.dumps(scope, ensure_ascii=False)),
-        )
-        did = cur.lastrowid
-    return {"id": did, "title": title, "scope": scope, "status": "draft"}
-
-
-@app.post("/api/decks/{did}/guess")
-def guess_deck_scope(did: int):
-    with db.get_conn() as conn:
-        deck = conn.execute("SELECT * FROM decks WHERE id=?", (did,)).fetchone()
-        if deck is None:
-            raise HTTPException(404, "deck not found")
-        nb = conn.execute(
-            "SELECT name, topics, syllabus FROM notebooks WHERE id=?", (deck["notebook_id"],)
-        ).fetchone()
-        test = conn.execute(
-            "SELECT title, date_text, scope FROM tests WHERE id=?", (deck["quiz_id"],)
-        ).fetchone()
-    syllabus_topics = [t.strip() for t in (nb["topics"] or "").splitlines() if t.strip()]
-    ann = ""
-    if test:
-        scope_txt = ""
-        try:
-            scope_txt = ", ".join(json.loads(test["scope"] or "[]"))
-        except Exception:
-            pass
-        ann = f"{test['title']} ({test['date_text'] or ''}). Scope mentioned: {scope_txt}"
-    elif nb["syllabus"]:
-        ann = "Syllabus outline available."
-    scope = deckgen.guess_scope(nb["name"], syllabus_topics, ann)
-    return {"scope": scope}
-
-
-@app.patch("/api/decks/{did}")
-def update_deck(did: int, body: dict):
-    with db.get_conn() as conn:
-        deck = conn.execute("SELECT id FROM decks WHERE id=?", (did,)).fetchone()
-        if deck is None:
-            raise HTTPException(404, "deck not found")
-        fields = {}
-        if "title" in body:
-            fields["title"] = str(body["title"]).strip()
-        if "scope" in body:
-            fields["scope"] = json.dumps([str(s) for s in body["scope"]], ensure_ascii=False)
-        if fields:
-            sets = ", ".join(f"{k}=?" for k in fields)
-            conn.execute(f"UPDATE decks SET {sets} WHERE id=?", (*fields.values(), did))
-    return {"ok": True}
-
-
-@app.post("/api/decks/{did}/confirm", status_code=202)
-def confirm_deck(did: int, background_tasks: BackgroundTasks):
-    with db.get_conn() as conn:
-        deck = conn.execute("SELECT * FROM decks WHERE id=?", (did,)).fetchone()
-        if deck is None:
-            raise HTTPException(404, "deck not found")
-    background_tasks.add_task(deckgen.generate_deck_cards, did)
-    return {"ok": True, "status": "generating"}
-
-
-@app.delete("/api/decks/{did}")
-def delete_deck(did: int):
-    with db.get_conn() as conn:
-        deck = conn.execute("SELECT id FROM decks WHERE id=?", (did,)).fetchone()
-        if deck is None:
-            raise HTTPException(404, "deck not found")
-        conn.execute("DELETE FROM cards WHERE deck_id=?", (did,))
-        conn.execute("DELETE FROM decks WHERE id=?", (did,))
-    return {"ok": True}
-
-
-@app.get("/api/decks/{did}/export")
-def export_deck(did: int, format: str = "apkg"):
-    with db.get_conn() as conn:
-        deck = conn.execute("SELECT * FROM decks WHERE id=?", (did,)).fetchone()
-        if deck is None:
-            raise HTTPException(404, "deck not found")
-        nb = conn.execute("SELECT name FROM notebooks WHERE id=?", (deck["notebook_id"],)).fetchone()
-        cards = conn.execute(
-            "SELECT question, answer FROM cards WHERE deck_id=? ORDER BY position", (did,)
-        ).fetchall()
-    return _export([(c["question"], c["answer"]) for c in cards], format, f"{nb['name']} :: {deck['title']}", [nb["name"]])
-
-
-# ------------------------------------------------------------------ quizzes
-
-@app.get("/api/notebooks/{nb_id}/quizzes")
-def list_quizzes(nb_id: int):
-    with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
-        rows = conn.execute(
-            "SELECT id, title, difficulty, created_at FROM quizzes WHERE notebook_id=? ORDER BY id DESC",
-            (nb_id,),
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
-@app.post("/api/notebooks/{nb_id}/quizzes", status_code=201)
-def create_quiz(nb_id: int, body: dict):
-    with db.get_conn() as conn:
-        _nb_or_404(conn, nb_id)
-    source = str(body.get("source") or "All cards").strip()
-    scope = [str(s) for s in (body.get("scope") or [])]
-    try:
-        difficulty = int(body.get("difficulty", 5))
-    except (TypeError, ValueError):
-        difficulty = 5
-    difficulty = max(1, min(10, difficulty))
-    try:
-        count = int(body.get("num_questions", 10))
-    except (TypeError, ValueError):
-        count = 10
-    count = max(1, min(25, count))
-    try:
-        questions = quizzes.generate_quiz(nb_id, source, scope, difficulty, count)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    if not questions:
-        raise HTTPException(400, "could not generate any valid questions — try fewer questions or different scope")
-    title = f"{source} · diff {difficulty}"
-    with db.get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO quizzes(notebook_id, title, difficulty, questions) VALUES (?,?,?,?)",
-            (nb_id, title, difficulty, json.dumps(questions, ensure_ascii=False)),
-        )
-        qid = cur.lastrowid
-    return {"id": qid, "title": title, "difficulty": difficulty, "questions": questions}
-
-
-@app.get("/api/quizzes/{qid}")
-def get_quiz(qid: int):
-    with db.get_conn() as conn:
-        row = conn.execute(
-            "SELECT id, notebook_id, title, difficulty, questions, created_at FROM quizzes WHERE id=?",
-            (qid,),
-        ).fetchone()
-    if row is None:
-        raise HTTPException(404, "quiz not found")
-    d = dict(row)
-    d["questions"] = json.loads(d["questions"])
-    return d
-
-
-@app.delete("/api/quizzes/{qid}")
-def delete_quiz(qid: int):
-    with db.get_conn() as conn:
-        cur = conn.execute("DELETE FROM quizzes WHERE id=?", (qid,))
-    if cur.rowcount == 0:
-        raise HTTPException(404, "quiz not found")
-    return {"ok": True}
-
-
-# ------------------------------------------------------------------- health
 
 @app.get("/api/update")
 def update_check():

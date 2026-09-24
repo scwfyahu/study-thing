@@ -12,8 +12,7 @@ def test_home_payload_shape(client, conn):
     assert r.status_code == 200
     body = r.json()
     assert {"totals", "recent", "tests"} <= set(body)
-    assert {"notebooks", "recordings", "cards", "decks", "quizzes",
-            "inbox", "active"} <= set(body["totals"])
+    assert {"notebooks", "recordings", "inbox", "active"} <= set(body["totals"])
     assert isinstance(body["recent"], list) and isinstance(body["tests"], list)
 
 
@@ -59,37 +58,48 @@ def test_stop_all_stamps_active_rows(client, conn):
                         (r3,)).fetchone()["status"] == "done"
 
 
-def test_deck_export_apkg(client, conn):
-    nb = seed_notebook(conn, "Export NB")
-    cur = conn.execute(
-        "INSERT INTO decks(notebook_id, title, status) VALUES (?,?,?)",
-        (nb, "Export deck", "ready"))
-    did = cur.lastrowid
-    for i in range(2):
-        conn.execute(
-            "INSERT INTO cards(notebook_id, recording_id, deck_id, question, answer, position)"
-            " VALUES (?,?,?,?,?,?)", (nb, None, did, f"Q{i}?", f"A{i}", i))
+def test_reviewer_pick_and_generate_flow(client, conn, monkeypatch):
+    from backend import reviewers as rv
+    monkeypatch.setattr(rv, "generate", lambda ids, title, on_stage=None: {
+        "content": "1. Overview\\n  1.1 done", "notebook_id": 1,
+        "notes_count": 1, "words": 4, "sources": ["s"]})
+    """Reviewer is the flagship now: pick transcribed recordings, queue guide."""
+    nb = seed_notebook(conn, "Review NB")
+    rec_id = seed_recording(conn, nb)
+    conn.execute("INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
+                 (rec_id, 0, 0.0, "Adolescence is a transition period."))
     conn.commit()
-    r = client.get(f"/api/decks/{did}/export")
-    assert r.status_code == 200
-    body = r.content
-    assert len(body) > 100  # apkg is a real zip, not an error page
-    assert body[:2] == b"PK"
+    # eligible only when done
+    pick = client.get("/api/reviewers/pick", params={"notebook_id": nb}).json()
+    assert pick["recordings"] == []  # seed_recording status != done
+    conn.execute("UPDATE recordings SET status='done' WHERE id=?", (rec_id,))
+    conn.commit()
+    pick = client.get("/api/reviewers/pick", params={
+        "notebook_id": nb, "date_from": "2000-01-01"}).json()
+    assert [r["id"] for r in pick["recordings"]] == [rec_id]
+    # empty pick rejected
+    assert client.post("/api/reviewers/generate",
+                       json={"recording_ids": []}).status_code == 400
+    # queued row lands with status generating
+    r = client.post("/api/reviewers/generate",
+                    json={"recording_ids": [rec_id], "title": "T1"})
+    assert r.status_code == 201
+    rid = r.json()["id"]
+    listing = client.get("/api/reviewers").json()
+    # TestClient runs background tasks inline -> job already completed
+    assert any(x["id"] == rid and x["status"] == "ready" for x in listing)
+    assert client.get(f"/api/reviewers/{rid}").status_code == 200
 
 
-def test_deck_export_csv(client, conn):
-    nb = seed_notebook(conn, "Export CSV NB")
-    cur = conn.execute(
-        "INSERT INTO decks(notebook_id, title, status) VALUES (?,?,?)",
-        (nb, "CSV deck", "ready"))
-    did = cur.lastrowid
-    conn.execute(
-        "INSERT INTO cards(notebook_id, recording_id, deck_id, question, answer, position)"
-        " VALUES (?,?,?,?,?,?)", (nb, None, did, "Q", "A", 0))
+def test_reviewers_survive_recordings_without_class(client, conn):
+    """Unassigned (escrow) picks must be rejected, not crash on NULL notebook."""
+    rec_id = seed_recording(conn, None)
+    conn.execute("UPDATE recordings SET status='done' WHERE id=?", (rec_id,))
+    conn.execute("INSERT INTO chunks(recording_id, idx, start_sec, text) VALUES (?,?,?,?)",
+                 (rec_id, 0, 0.0, "noise"))
     conn.commit()
-    r = client.get(f"/api/decks/{did}/export?format=csv")
-    assert r.status_code == 200
-    assert b"Q" in r.content
+    assert client.post("/api/reviewers/generate",
+                       json={"recording_ids": [rec_id]}).status_code == 400
 
 
 def test_inbox_count_endpoint(client, conn):

@@ -9,28 +9,6 @@ function fmtDate(iso) {
   return days < 0 ? `${label} (${-days}d ago)` : days === 0 ? `${label} (today)` : `${label} (in ${days}d)`;
 }
 
-function DeckButton({ t, refresh, onConfirmScope }) {
-  const [busy, setBusy] = useState(false);
-  const status = t.deck_status;
-  const go = async () => {
-    setBusy(true);
-    try { await api.testDeck(t.id); } catch {}
-    await refresh();
-    setBusy(false);
-  };
-  if (t.confirmed !== 1) {
-    return <button className="btn small primary"
-            onClick={() => onConfirmScope(t)}>Confirm scope</button>;
-  }
-  let label, cls = "btn small";
-  if (busy) label = "Generating…";
-  else if (!status) label = "Generate deck";
-  else if (status === "ready") label = `Deck ready (${t.deck_cards || 0}) · Regenerate`;
-  else label = "Deck: " + status + " · Regenerate";
-  return <button className={cls + (status === "ready" ? " primary" : "")}
-          onClick={go} disabled={busy}>{label}</button>;
-}
-
 function ImportModal({ notebooks, state, onClose, onAdded }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -135,7 +113,7 @@ function ScopeConfirm({ t, onClose, onDone }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Confirm scope — {t.title}</h3>
-        <label>Scope <span className="muted">(flashcards will only cover these)</span></label>
+        <label>Scope <span className="muted">(feeds reviewer emphasis + study guides)</span></label>
         <button className="btn small" style={{ margin: "4px 0" }}
           onClick={async () => {
             setGuessing(true);
@@ -162,7 +140,7 @@ function ScopeConfirm({ t, onClose, onDone }) {
         <div className="modal-actions">
           <button className="btn" onClick={onClose}>Cancel</button>
           <button className="btn primary" onClick={confirm} disabled={busy}>
-            {busy ? "Confirming…" : "Confirm scope → generate deck"}
+            {busy ? "Confirming…" : "Confirm scope"}
           </button>
         </div>
       </div>
@@ -250,7 +228,7 @@ export default function ScheduleView({ onOpenNotebook }) {
                 {t.date_text && <span className="test-date">{t.date_text}</span>}
                 <span className="test-iso">{fmtDate(t.date_iso)}</span>
                 <span className="spacer" />
-                <DeckButton t={t} refresh={load} onConfirmScope={setConfirming} />
+                {t.confirmed !== 1 ? <button className="btn small primary" onClick={() => setConfirming(t)}>Confirm scope</button> : null}
                 <button className="icon-del" onClick={() => del(t.id)} title="Delete">✕</button>
               </div>
               {t.scope?.length > 0 && (
@@ -274,7 +252,7 @@ export default function ScheduleView({ onOpenNotebook }) {
                 </button>
                 {t.date_text && <span className="test-date">“{t.date_text}”</span>}
                 <span className="spacer" />
-                <DeckButton t={t} refresh={load} onConfirmScope={setConfirming} />
+                {t.confirmed !== 1 ? <button className="btn small primary" onClick={() => setConfirming(t)}>Confirm scope</button> : null}
                 <button className="icon-del" onClick={() => del(t.id)} title="Delete">✕</button>
               </div>
               {t.scope?.length > 0 && (

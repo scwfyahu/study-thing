@@ -60,25 +60,6 @@ export const api = {
       body: JSON.stringify({ notebook_id: notebookId }),
     }).then(j),
   notebook: (id) => fetch(`/api/notebooks/${id}`).then(j),
-  cards: (nbId, topic, deckId) => {
-    const params = new URLSearchParams();
-    if (topic) params.set("topic", topic);
-    if (deckId) params.set("deck_id", deckId);
-    const q = params.toString() ? `?${params}` : "";
-    return fetch(`/api/notebooks/${nbId}/cards${q}`).then(j);
-  },
-  decks: (nbId) => fetch(`/api/notebooks/${nbId}/decks`).then(j),
-  createDeck: (nbId, body) =>
-    fetch(`/api/notebooks/${nbId}/decks`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    }).then(j),
-  guessDeckScope: (did) => fetch(`/api/decks/${did}/guess`, { method: "POST" }).then(j),
-  updateDeck: (did, body) =>
-    fetch(`/api/decks/${did}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    }).then(j),
-  confirmDeck: (did) => fetch(`/api/decks/${did}/confirm`, { method: "POST" }).then(j),
-  deleteDeck: (did) => fetch(`/api/decks/${did}`, { method: "DELETE" }).then(j),
   upload: (nbId, file) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -110,14 +91,20 @@ export const api = {
   reprocess: (id) =>
     fetch(`/api/recordings/${id}/reprocess`, { method: "POST" }).then(j),
   deleteRecording: (id) => fetch(`/api/recordings/${id}`, { method: "DELETE" }).then(j),
-  reviewers: (nbId) => fetch(`/api/notebooks/${nbId}/reviewers`).then(j),
-  createReviewer: (nbId, topic) =>
-    fetch(`/api/notebooks/${nbId}/reviewers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic }),
+  reviewers: () => fetch("/api/reviewers").then(j),
+  reviewerPick: (params) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    ).toString();
+    return fetch(`/api/reviewers/pick${qs ? `?${qs}` : ""}`).then(j);
+  },
+  generateReviewer: (body) =>
+    fetch("/api/reviewers/generate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     }).then(j),
-  deleteReviewer: (id) => fetch(`/api/reviewers/${id}`, { method: "DELETE" }).then(j),
+  reviewer: (id) => fetch(`/api/reviewers/${id}`).then(j),
+    deleteReviewer: (id) => fetch(`/api/reviewers/${id}`, { method: "DELETE" }).then(j),
   tests: (nbId) => fetch(`/api/notebooks/${nbId}/tests`).then(j),
   scanTests: (nbId) =>
     fetch(`/api/notebooks/${nbId}/tests/scan`, { method: "POST" }).then(j),
@@ -126,32 +113,8 @@ export const api = {
       body: JSON.stringify(opts || {}), signal: opts?.signal,
     }).then(j),
   confirmTest: (id, scope) => fetch(`/api/tests/${id}/confirm`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scope})}).then(j),
-  testDeck: (id) => fetch(`/api/tests/${id}/deck`, { method: "POST" }).then(j),
   deleteTest: (id) => fetch(`/api/tests/${id}`, { method: "DELETE" }).then(j),
   schedule: () => fetch("/api/schedule").then(j),
   scanSchedule: () =>
     fetch("/api/schedule/scan", { method: "POST" }).then(j),
-  study: (nbId, recordingId, topic, deckId) => {
-    const params = new URLSearchParams();
-    if (recordingId) params.set("recording_id", recordingId);
-    if (topic) params.set("topic", topic);
-    if (deckId) params.set("deck_id", deckId);
-    const q = params.toString() ? `?${params}` : "";
-    return fetch(`/api/notebooks/${nbId}/study${q}`).then(j);
-  },
-  rate: (cardId, rating) =>
-    fetch("/api/ratings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ card_id: cardId, rating }),
-    }).then(j),
-  quizzes: (nbId) => fetch(`/api/notebooks/${nbId}/quizzes`).then(j),
-  createQuiz: (nbId, body) =>
-    fetch(`/api/notebooks/${nbId}/quizzes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(j),
-  quiz: (qid) => fetch(`/api/quizzes/${qid}`).then(j),
-  deleteQuiz: (qid) => fetch(`/api/quizzes/${qid}`, { method: "DELETE" }).then(j),
 };

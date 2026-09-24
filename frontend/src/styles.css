@@ -627,3 +627,24 @@ button.primary:hover, .primary:hover { background: oklch(52% 0.2 256); border-co
 .setup textarea, .setup select { width: 100%; }
 .split-row input.sel-nb { max-width: 180px; }
 .side-export-btn { margin-top: var(--space-3xs); }
+
+/* ---------- reviewer picker ---------- */
+.pick-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+.pick-filters input[type="date"] {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.pick-filters input[type="checkbox"] {
+  accent-color: var(--color-accent, #4a7cff);
+}
