@@ -111,6 +111,16 @@ def import_schedule(fallback_notebook_id: int | None, text: str, today: str) -> 
             if not date_iso:
                 skipped.append({"title": title, "reason": "no resolvable date"})
                 continue
+            # System One judge: Jev typed choice picks the class (LLM
+            # extraction proposes; typed decision wins when an engine answers).
+            jd = _classify.decide_notebook(
+                "Assessment from a class test schedule.\n"
+                f"Title: {title}\n"
+                f"Scope: {a.get('scope') or '(none)'}\n"
+                f"Schedule:\n{(text or '')[:4000]}",
+                profiles)
+            if jd is not None:
+                a["notebook_id"] = jd["notebook_id"]
             try:
                 nb = int(a.get("notebook_id") or 0)
             except (TypeError, ValueError):

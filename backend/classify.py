@@ -85,6 +85,46 @@ def _resolve_id(nid, notebooks: list[dict]) -> int | None:
     return nid
 
 
+def decide_notebook(state: str, notebooks: list[dict]) -> dict | None:
+    """Typed choice over notebook ids via System One engines: Laya (local,
+    off by default) then Jev (hosted, calibrated). Returns the same shape as
+    classify() minus the LLM, or None when no engine answered — callers then
+    fall back to the LLM. Rich criteria are fine for Jev; Laya's head budget
+    may reject them (it errors -> next engine)."""
+    from . import jev as _jev
+    from . import laya_client as _laya
+
+    criteria = {
+        str(p["id"]): (
+            (p.get("name") or "")
+            + (f" — topics: {'; '.join(p.get('topics') or [])}" if p.get("topics") else "")
+            + (f" — syllabus: {str(p.get('syllabus') or '')[:400]}" if p.get("syllabus") else "")
+        )
+        for p in notebooks
+    }
+    criteria["0"] = "None of these — noise or an unrelated subject"
+    instructions = (
+        "Which class notebook does this material belong to? "
+        "Return 0 only if no listed class could plausibly contain it "
+        "(noise, chit-chat, unrelated subject).")
+    for engine_name, engine in (("Laya", _laya), ("Jev", _jev)):
+        if not engine.available():
+            continue
+        try:
+            r = engine.choice(state, "notebook", instructions, criteria)
+            nid = _resolve_id(r["choice"], notebooks)
+            name = next((p["name"] for p in notebooks if p["id"] == nid), None)
+            return {"notebook_id": nid, "name": name,
+                    "confidence": round(min(1.0, max(0.0, r["confidence"])), 2),
+                    "topics": [],
+                    "reason": (f"{engine_name} typed decision — choice {r['choice']} "
+                               f"(calibrated confidence {r['confidence']:.2f})")}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("%s notebook decision failed, trying next engine: %s",
+                           engine_name, e)
+    return None
+
+
 def classify(text: str, notebooks: list[dict] | None = None) -> dict:
     """Suggest the best notebook for a transcript. Never files anything.
 
@@ -106,38 +146,10 @@ def classify(text: str, notebooks: list[dict] | None = None) -> dict:
         + (("\nSyllabus: " + p["syllabus"]) if p["syllabus"] else "")
         for p in notebooks
     )
-    # --- System One fast path: typed decision (Laya local first, Jev hosted
-    # second). On any failure we fall through to the LLM path below.
-    from . import jev as _jev
-    from . import laya_client as _laya
-
-    criteria = {
-        str(p["id"]): (
-            p["name"]
-            + (f" — topics: {'; '.join(p['topics'][:8])}" if p["topics"] else "")
-            + (f" — syllabus: {p['syllabus'][:150]}" if p["syllabus"] else "")
-        )
-        for p in notebooks
-    }
-    criteria["0"] = "None of these — noise or an unrelated subject"
-    instructions = (
-        "Which class notebook does this lecture transcript belong to? "
-        "Return 0 only if no listed class could plausibly contain this "
-        "material (noise, chit-chat, unrelated subject).")
-    for engine_name, engine in (("Laya", _laya), ("Jev", _jev)):
-        if not engine.available():
-            continue
-        try:
-            r = engine.choice(sample, "notebook", instructions, criteria)
-            nid = _resolve_id(r["choice"], notebooks)
-            name = next((p["name"] for p in notebooks if p["id"] == nid), None)
-            reason = (f"{engine_name} typed decision — choice {r['choice']} "
-                      f"(calibrated confidence {r['confidence']:.2f})")
-            return {"notebook_id": nid, "name": name,
-                    "confidence": round(min(1.0, max(0.0, r["confidence"])), 2),
-                    "topics": [], "reason": reason}
-        except Exception as e:  # noqa: BLE001
-            logger.warning("%s classify failed, trying next engine: %s", engine_name, e)
+    # --- System One fast path: typed decision (shared helper, Jev primary).
+    decision = decide_notebook(sample, notebooks)
+    if decision is not None:
+        return decision
     try:
         res = _ollama_json([
             {"role": "system", "content": (

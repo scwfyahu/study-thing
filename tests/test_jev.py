@@ -51,3 +51,43 @@ def test_classifier_zero_choice_is_none():
     NB = [{"id": 12, "name": "Chem"}]
     assert _resolve_id("0", NB) is None
     assert _resolve_id("12", NB) == 12
+
+
+def test_decide_notebook_none_without_engines():
+    from backend.classify import decide_notebook
+    assert decide_notebook("t", [{"id": 1, "name": "X"}]) is None
+
+
+def test_decide_notebook_uses_jev(monkeypatch):
+    from backend import classify, jev, laya_client
+    monkeypatch.setattr(jev, "available", lambda: True)
+    monkeypatch.setattr(laya_client, "available", lambda: False)
+    monkeypatch.setattr(jev, "choice",
+                        lambda *a, **k: {"choice": "14", "confidence": 0.97})
+    d = decide_notebook_helper(classify, "lecture", [{"id": 14, "name": "Kasaysayan"}])
+    assert d["notebook_id"] == 14
+    assert "Jev" in d["reason"] and d["confidence"] == 0.97
+
+
+def decide_notebook_helper(classify, state, nbs):
+    return classify.decide_notebook(state, nbs)
+
+
+def test_decide_notebook_zero_is_none(monkeypatch):
+    from backend import classify, jev, laya_client
+    monkeypatch.setattr(laya_client, "available", lambda: False)
+    monkeypatch.setattr(jev, "available", lambda: True)
+    monkeypatch.setattr(jev, "choice",
+                        lambda *a, **k: {"choice": "0", "confidence": 0.72})
+    d = classify.decide_notebook("noise", [{"id": 14, "name": "Kasaysayan"}])
+    assert d["notebook_id"] is None and d["confidence"] == 0.72
+
+
+def test_decide_notebook_engine_error_returns_none(monkeypatch):
+    from backend import classify, jev, laya_client
+    monkeypatch.setattr(laya_client, "available", lambda: False)
+    monkeypatch.setattr(jev, "available", lambda: True)
+    def boom(*a, **k):
+        raise RuntimeError("429")
+    monkeypatch.setattr(jev, "choice", boom)
+    assert classify.decide_notebook("t", [{"id": 1, "name": "X"}]) is None
