@@ -16,8 +16,9 @@ import requests
 
 logger = logging.getLogger("studything.jev")
 
-ENDPOINT = "https://api.typesafe.ai/v1/systemone"
-MODEL = os.environ.get("STUDY_JEV_MODEL", "jev-latest")
+ENDPOINT_TYPESAFE = "https://api.typesafe.ai/v1/systemone"
+ENDPOINT_OPENROUTER = "https://openrouter.ai/api/alpha/decisions"
+MODEL = os.environ.get("STUDY_JEV_MODEL", "typesafe/jev-1.13")
 TIMEOUT = 20
 
 
@@ -25,26 +26,41 @@ def _key() -> str:
     return os.environ.get("STUDY_JEV_API_KEY") or os.environ.get("TYPESAFE_API_KEY") or ""
 
 
+def _or_key() -> str:
+    return os.environ.get("OPENROUTER_API_KEY") or ""
+
+
 def available() -> bool:
-    return bool(_key())
+    return bool(_key()) or bool(_or_key())
 
 
 def decide(state: str, questions: dict, model: str | None = None) -> dict:
     """POST a state + typed questions. Returns the raw response dict.
 
+    Routes: dedicated TypeSafe key hits typesafe.ai directly; otherwise the
+    OpenRouter alpha System One endpoint (same account as the text LLM).
     Raises on any transport/shape failure — callers treat that as 'Jev off'.
     """
-    key = _key()
-    if not key:
-        raise RuntimeError("Jev disabled (no TYPESAFE_API_KEY)")
-    r = requests.post(
-        ENDPOINT,
-        headers={"Authorization": f"Bearer {key}",
-                 "Content-Type": "application/json"},
-        json={"model": model or MODEL, "state": state, "questions": questions},
-        timeout=TIMEOUT)
+    ts_key = _key()
+    if ts_key:
+        url, hdrs, mdl = ENDPOINT_TYPESAFE, {
+            "Authorization": f"Bearer {ts_key}"}, (model or "jev-latest")
+    elif _or_key():
+        url, hdrs, mdl = ENDPOINT_OPENROUTER, {
+            "Authorization": f"Bearer {_or_key()}",
+            "HTTP-Referer": "https://github.com/studything",
+            "X-Title": "StudyThing"}, (model or MODEL)
+    else:
+        raise RuntimeError("Jev disabled (no TYPESAFE_API_KEY / OPENROUTER_API_KEY)")
+    hdrs["Content-Type"] = "application/json"
+    r = requests.post(url, headers=hdrs,
+                      json={"model": mdl, "state": state, "questions": questions},
+                      timeout=TIMEOUT)
     r.raise_for_status()
-    return r.json()
+    resp = r.json()
+    if isinstance(resp, dict) and resp.get("error"):
+        raise RuntimeError(f"Jev API error: {resp['error']}")
+    return resp
 
 
 def choice(state: str, key: str, instructions: str,
